@@ -152,14 +152,18 @@ impl<'a> IdentityRepository<'a> {
         // Build a dynamic query. We use the dn LIKE '%base_dn' pattern
         // for subtree searches. The base_dn_pattern is constructed as a
         // suffix match (the user's DN ends with the base DN).
-        let base_dn_pattern = format!("%{}", base_dn);
+        let escaped_dn = base_dn
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        let base_dn_pattern = format!("%{}", escaped_dn);
         let limit = filter.limit.unwrap_or(100);
 
         let users = sqlx::query_as::<_, User>(
             r#"
             SELECT id, username, display_name, email, dn, enabled, created_at, updated_at
             FROM identity.users
-            WHERE dn LIKE $1
+            WHERE dn LIKE $1 ESCAPE '\'
               AND ($2::text    IS NULL OR username = $2)
               AND ($3::text    IS NULL OR email = $3)
               AND ($4::boolean IS NULL OR enabled = $4)
@@ -184,14 +188,18 @@ impl<'a> IdentityRepository<'a> {
         base_dn: &str,
         filter: &SearchFilter,
     ) -> DbResult<Vec<Group>> {
-        let base_dn_pattern = format!("%{}", base_dn);
+        let escaped_dn = base_dn
+            .replace('\\', "\\\\")
+            .replace('%', "\\%")
+            .replace('_', "\\_");
+        let base_dn_pattern = format!("%{}", escaped_dn);
         let limit = filter.limit.unwrap_or(100);
 
         let groups = sqlx::query_as::<_, Group>(
             r#"
             SELECT id, group_name, dn, description, created_at, updated_at
             FROM identity.groups
-            WHERE dn LIKE $1
+            WHERE dn LIKE $1 ESCAPE '\'
               AND ($2::text IS NULL OR group_name = $2)
             ORDER BY group_name
             LIMIT $3

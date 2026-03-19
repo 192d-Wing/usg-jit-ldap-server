@@ -112,10 +112,18 @@ impl ReplicationConfig {
         if self.stale_threshold < self.pull_interval {
             return Err("stale_threshold must be >= pull_interval".into());
         }
-        // NIST SC-8: Warn if the connection string does not enforce TLS.
-        if !self.central_url.contains("sslmode=verify-full")
-            && !self.central_url.contains("sslmode=verify-ca")
-        {
+        // NIST SC-8: Validate that the replication connection uses verified TLS.
+        // Parse the URL properly to prevent bypass via embedded strings.
+        let has_valid_sslmode = self.central_url
+            .split('?')
+            .nth(1)
+            .unwrap_or("")
+            .split('&')
+            .filter_map(|param| param.split_once('='))
+            .any(|(key, value)| {
+                key == "sslmode" && (value == "verify-full" || value == "verify-ca")
+            });
+        if !has_valid_sslmode {
             return Err(
                 "central_url must use sslmode=verify-full or sslmode=verify-ca \
                  (NIST SC-8: transmission confidentiality)"
@@ -126,6 +134,24 @@ impl ReplicationConfig {
             return Err("batch_size must be between 1 and 100,000".into());
         }
         Ok(())
+    }
+}
+
+impl ReplicationConfig {
+    /// Create a ReplicationConfig from the server configuration settings.
+    pub fn from_settings(settings: &crate::config::ReplicationSettings) -> Self {
+        Self {
+            enabled: settings.enabled,
+            central_url: settings.central_url.clone().unwrap_or_default(),
+            pull_interval: Duration::from_secs(settings.pull_interval_secs),
+            site_id: settings.site_id.as_deref()
+                .and_then(|s| s.parse::<Uuid>().ok())
+                .unwrap_or(Uuid::nil()),
+            max_retry_attempts: settings.max_retry_attempts,
+            retry_backoff_base_secs: 5,
+            stale_threshold: Duration::from_secs(settings.stale_threshold_secs),
+            batch_size: settings.batch_size,
+        }
     }
 }
 

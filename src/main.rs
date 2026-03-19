@@ -36,6 +36,7 @@ use std::time::Instant;
 
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use tokio::sync::Semaphore;
 use audit::events::AuditEvent;
 use audit::AuditLogger;
 use auth::{ConfigBrokerAuthorizer, DatabaseAuthenticator, DatabasePasswordStore, DatabaseSearchBackend};
@@ -159,7 +160,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         server_config.server.bind_addr, server_config.server.port
     )
     .parse()
-    .expect("invalid bind address");
+    .map_err(|e| format!("invalid bind address '{}:{}': {}", server_config.server.bind_addr, server_config.server.port, e))?;
 
     let listener = TcpListener::bind(&listen_addr).await?;
     tracing::info!(
@@ -185,6 +186,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let broker_authorizer = Arc::new(ConfigBrokerAuthorizer::new(
         server_config.security.broker_dns.clone(),
     ));
+    let conn_semaphore = Arc::new(Semaphore::new(server_config.server.max_connections));
     let password_ttl = server_config.security.password_ttl_secs;
     let idle_timeout_secs = server_config.server.idle_timeout_secs;
 
@@ -198,6 +200,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             accept_result = listener.accept() => {
                 match accept_result {
                     Ok((tcp_stream, peer_addr)) => {
+                        // NIST SC-5: Connection limit enforcement.
+                        let permit = match conn_semaphore.clone().try_acquire_owned() {
+                            Ok(permit) => permit,
+                            Err(_) => {
+                                tracing::warn!(
+                                    peer = %peer_addr,
+                                    max = server_config.server.max_connections,
+                                    "connection rejected: max connections reached"
+                                );
+                                drop(tcp_stream);
+                                continue;
+                            }
+                        };
+
                         tracing::debug!(peer = %peer_addr, "accepted TCP connection");
 
                         // Clone shared resources for the connection task.
@@ -224,6 +240,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         source_addr: peer_addr.to_string(),
                                         error_detail: e.to_string(),
                                     }).await;
+                                    drop(permit);
                                     return;
                                 }
                             };
@@ -245,6 +262,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 password_ttl,
                                 idle_timeout,
                             ).await;
+                            drop(permit);
                         });
                     }
                     Err(e) => {
@@ -337,6 +355,15 @@ async fn handle_connection(
             }
             Ok(Ok(n)) => {
                 read_buf.extend_from_slice(&temp_buf[..n]);
+                // NIST SI-10: Reject if accumulated buffer exceeds max message size.
+                if read_buf.len() > ldap::codec::MAX_MESSAGE_SIZE + 1024 {
+                    tracing::warn!(
+                        peer = %peer_addr,
+                        buf_size = read_buf.len(),
+                        "read buffer exceeds maximum — closing connection"
+                    );
+                    break;
+                }
             }
             Ok(Err(e)) => {
                 tracing::warn!(peer = %peer_addr, error = %e, "read error");
@@ -461,6 +488,5 @@ fn init_tracing() {
         .with_thread_ids(true)
         .with_file(false)
         .with_line_number(false)
-        .json()
         .init();
 }

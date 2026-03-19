@@ -47,6 +47,12 @@ pub enum PasswordError {
 /// NIST IA-5: Password material is never retained in memory longer than
 /// necessary. The returned string is a PHC-format hash suitable for storage.
 pub fn hash_password(mut plaintext: Vec<u8>) -> Result<String, PasswordError> {
+    if plaintext.len() > 1024 {
+        plaintext.zeroize();
+        return Err(PasswordError::HashingFailed(
+            "password exceeds maximum length of 1024 bytes".into(),
+        ));
+    }
     let salt = SaltString::generate(&mut OsRng);
     let argon2 = Argon2::default();
 
@@ -71,6 +77,18 @@ pub fn hash_password(mut plaintext: Vec<u8>) -> Result<String, PasswordError> {
 /// NIST IA-5: Password bytes are compared against the hash and then dropped.
 /// The function never logs or retains the plaintext.
 pub fn verify_password(mut plaintext: Vec<u8>, stored_hash: &str) -> Result<bool, PasswordError> {
+    if plaintext.len() > 1024 {
+        plaintext.zeroize();
+        return Err(PasswordError::VerificationFailed(
+            "password exceeds maximum length of 1024 bytes".into(),
+        ));
+    }
+    if stored_hash.len() > 1024 {
+        plaintext.zeroize();
+        return Err(PasswordError::MalformedHash(
+            "stored hash exceeds maximum length".into(),
+        ));
+    }
     let parsed_hash = PasswordHash::new(stored_hash)
         .map_err(|e| PasswordError::MalformedHash(e.to_string()))?;
 

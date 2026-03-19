@@ -13,8 +13,7 @@ pub mod search;
 pub mod session;
 
 use codec::{
-    ExtendedRequest, ExtendedResponse, LdapMessage, LdapResult, ProtocolOp, ResultCode,
-    SearchResultEntry,
+    ExtendedResponse, LdapMessage, LdapResult, ProtocolOp, ResultCode,
 };
 use session::LdapSession;
 

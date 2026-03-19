@@ -24,7 +24,6 @@ use std::pin::Pin;
 use std::sync::Arc;
 
 use sqlx::PgPool;
-use zeroize::Zeroize;
 
 use crate::audit::events::{AuditEvent, BindOutcome};
 use crate::audit::AuditLogger;
@@ -120,12 +119,20 @@ impl Authenticator for DatabaseAuthenticator {
             {
                 Ok(Some(u)) => u,
                 Ok(None) => {
+                    // NIST IA-2: Perform dummy hash verification to prevent
+                    // timing-based user enumeration. Without this, an attacker
+                    // can distinguish "user exists" from "user not found" by
+                    // measuring response time.
+                    let _ = password::verify_password(
+                        password_bytes.to_vec(),
+                        "$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                    );
                     tracing::warn!(dn = %dn, peer = %self.peer_addr, "bind: user not found");
                     self.record_failure(dn, "user_not_found").await;
                     let event = AuditEvent::bind_attempt(
                         self.peer_addr,
                         dn,
-                        BindOutcome::UserNotFound,
+                        BindOutcome::InvalidCredentials,
                     );
                     self.audit.log(event).await;
                     return AuthResult::InvalidCredentials;
@@ -151,13 +158,32 @@ impl Authenticator for DatabaseAuthenticator {
                 let event = AuditEvent::bind_attempt(
                     self.peer_addr,
                     dn,
-                    BindOutcome::AccountDisabled,
+                    BindOutcome::InvalidCredentials,
                 );
                 self.audit.log(event).await;
                 return AuthResult::InvalidCredentials;
             }
 
-            // Step 3: Find valid ephemeral password.
+            // Step 3 + 4 + 5: Atomic password fetch, verify, and mark-as-used.
+            // NIST IA-5: One-time password enforcement via transactional lock.
+            // Uses SELECT FOR UPDATE SKIP LOCKED to prevent concurrent use of
+            // the same ephemeral password (race condition fix).
+            let mut tx = match self.pool.begin().await {
+                Ok(tx) => tx,
+                Err(e) => {
+                    tracing::error!(dn = %dn, error = %e, "bind: failed to begin transaction");
+                    let event = AuditEvent::bind_attempt(
+                        self.peer_addr,
+                        dn,
+                        BindOutcome::InternalError {
+                            detail: "transaction error".into(),
+                        },
+                    );
+                    self.audit.log(event).await;
+                    return AuthResult::InternalError("transaction error".into());
+                }
+            };
+
             let credential = match sqlx::query_as::<_, PasswordRow>(
                 r#"
                 SELECT id, password_hash
@@ -168,14 +194,17 @@ impl Authenticator for DatabaseAuthenticator {
                   AND expires_at > now()
                 ORDER BY issued_at DESC
                 LIMIT 1
+                FOR UPDATE SKIP LOCKED
                 "#,
             )
             .bind(user.id)
-            .fetch_optional(self.pool.as_ref())
+            .fetch_optional(&mut *tx)
             .await
             {
                 Ok(Some(cred)) => cred,
                 Ok(None) => {
+                    // No valid password found (or all locked by concurrent requests).
+                    let _ = tx.rollback().await;
                     tracing::warn!(dn = %dn, "bind: no valid ephemeral password");
                     self.record_failure(dn, "no_valid_credential").await;
                     let event = AuditEvent::bind_attempt(
@@ -187,44 +216,44 @@ impl Authenticator for DatabaseAuthenticator {
                     return AuthResult::InvalidCredentials;
                 }
                 Err(e) => {
+                    let _ = tx.rollback().await;
                     tracing::error!(dn = %dn, error = %e, "bind: credential lookup failed");
                     let event = AuditEvent::bind_attempt(
                         self.peer_addr,
                         dn,
                         BindOutcome::InternalError {
-                            detail: e.to_string(),
+                            detail: "credential lookup error".into(),
                         },
                     );
                     self.audit.log(event).await;
-                    return AuthResult::InternalError(e.to_string());
+                    return AuthResult::InternalError("credential lookup error".into());
                 }
             };
 
-            // Step 4: Verify password against stored hash.
+            // Verify password against stored hash.
             // NIST IA-5: Password material is zeroized after verification.
-            let mut password_copy = password_bytes.to_vec();
             let verified = match password::verify_password(
-                password_copy.clone(),
+                password_bytes.to_vec(),
                 &credential.password_hash,
             ) {
                 Ok(v) => v,
                 Err(e) => {
-                    password_copy.zeroize();
+                    let _ = tx.rollback().await;
                     tracing::error!(dn = %dn, error = %e, "bind: password verification error");
                     let event = AuditEvent::bind_attempt(
                         self.peer_addr,
                         dn,
                         BindOutcome::InternalError {
-                            detail: e.to_string(),
+                            detail: "verification error".into(),
                         },
                     );
                     self.audit.log(event).await;
-                    return AuthResult::InternalError(e.to_string());
+                    return AuthResult::InternalError("verification error".into());
                 }
             };
-            password_copy.zeroize();
 
             if !verified {
+                let _ = tx.rollback().await;
                 tracing::warn!(dn = %dn, peer = %self.peer_addr, "bind: invalid credentials");
                 self.record_failure(dn, "invalid_password").await;
                 let event = AuditEvent::bind_attempt(
@@ -236,22 +265,46 @@ impl Authenticator for DatabaseAuthenticator {
                 return AuthResult::InvalidCredentials;
             }
 
-            // Step 5: Mark password as used (one-time use).
+            // Mark password as used within the same transaction.
+            // NIST IA-5: Ensures one-time use — the FOR UPDATE lock prevents
+            // concurrent threads from using this password.
             if let Err(e) = sqlx::query(
                 "UPDATE runtime.ephemeral_passwords SET used = TRUE, used_at = now() WHERE id = $1",
             )
             .bind(credential.id)
-            .execute(self.pool.as_ref())
+            .execute(&mut *tx)
             .await
             {
-                // Non-fatal: the bind succeeded, but we failed to mark the password.
-                // Log this prominently — it means the password could be reused.
+                let _ = tx.rollback().await;
                 tracing::error!(
                     dn = %dn,
                     password_id = %credential.id,
                     error = %e,
                     "CRITICAL: failed to mark ephemeral password as used"
                 );
+                let event = AuditEvent::bind_attempt(
+                    self.peer_addr,
+                    dn,
+                    BindOutcome::InternalError {
+                        detail: "failed to mark password used".into(),
+                    },
+                );
+                self.audit.log(event).await;
+                return AuthResult::InternalError("failed to mark password used".into());
+            }
+
+            // Commit the transaction — password is now atomically consumed.
+            if let Err(e) = tx.commit().await {
+                tracing::error!(dn = %dn, error = %e, "bind: transaction commit failed");
+                let event = AuditEvent::bind_attempt(
+                    self.peer_addr,
+                    dn,
+                    BindOutcome::InternalError {
+                        detail: "commit error".into(),
+                    },
+                );
+                self.audit.log(event).await;
+                return AuthResult::InternalError("commit error".into());
             }
 
             // Step 6: Record success.
@@ -364,7 +417,13 @@ impl SearchBackend for DatabaseSearchBackend {
             // For v1, we support a subset: equality on cn/uid/mail, presence of objectClass.
             let (username_filter, email_filter) = extract_simple_filters(filter);
 
-            let base_dn_pattern = format!("%{}", base_dn);
+            // Escape LIKE wildcards to prevent wildcard injection.
+            // NIST SI-10: Input validation — base_dn must not control LIKE semantics.
+            let escaped_dn = base_dn
+                .replace('\\', "\\\\")
+                .replace('%', "\\%")
+                .replace('_', "\\_");
+            let base_dn_pattern = format!("%{}", escaped_dn);
             let effective_limit = if size_limit <= 0 { 100i64 } else { size_limit as i64 };
 
             // Query users matching the filter under the base DN.
@@ -372,7 +431,7 @@ impl SearchBackend for DatabaseSearchBackend {
                 r#"
                 SELECT id, username, display_name, email, dn
                 FROM identity.users
-                WHERE dn LIKE $1
+                WHERE dn LIKE $1 ESCAPE '\'
                   AND ($2::text IS NULL OR username = $2)
                   AND ($3::text IS NULL OR email = $3)
                   AND enabled = TRUE

@@ -102,16 +102,13 @@ pub struct TlsSettings {
     /// Path to the PEM-encoded private key.
     pub key_path: String,
 
-    /// Optional path to a CA bundle for client-certificate (mTLS) verification.
-    pub ca_path: Option<String>,
-
-    /// Minimum TLS version. Default: "1.2". Only "1.2" and "1.3" are accepted.
+    /// Minimum TLS version. Default: "1.3". Only "1.3" is accepted.
     #[serde(default = "default_min_tls_version")]
     pub min_version: String,
 }
 
 fn default_min_tls_version() -> String {
-    "1.2".to_string()
+    "1.3".to_string()
 }
 
 /// PostgreSQL database connection settings.
@@ -306,10 +303,10 @@ fn validate(config: &ServerConfig) -> Result<(), ConfigError> {
 
     // Validate minimum TLS version.
     match config.tls.min_version.as_str() {
-        "1.2" | "1.3" => {}
+        "1.3" => {}
         other => {
             return Err(ConfigError::Validation(format!(
-                "unsupported minimum TLS version: '{}'. Must be '1.2' or '1.3'.",
+                "unsupported TLS version: '{}'. Only '1.3' is supported.",
                 other
             )));
         }
@@ -334,6 +331,40 @@ fn validate(config: &ServerConfig) -> Result<(), ConfigError> {
         return Err(ConfigError::Validation(
             "max_bind_attempts must be > 0".into(),
         ));
+    }
+
+    // Bound rate limit parameters to sane ranges.
+    if config.security.max_bind_attempts > 100 {
+        return Err(ConfigError::Validation(format!(
+            "max_bind_attempts must be <= 100 (got {})",
+            config.security.max_bind_attempts
+        )));
+    }
+    if config.security.rate_limit_window_secs > 3600 {
+        return Err(ConfigError::Validation(format!(
+            "rate_limit_window_secs must be <= 3600 (got {})",
+            config.security.rate_limit_window_secs
+        )));
+    }
+
+    // Password TTL must be in a reasonable range.
+    if config.security.password_ttl_secs < 60 {
+        return Err(ConfigError::Validation(
+            "password_ttl_secs must be >= 60".into(),
+        ));
+    }
+    if config.security.password_ttl_secs > 86400 * 7 {
+        return Err(ConfigError::Validation(
+            "password_ttl_secs must be <= 604800 (7 days)".into(),
+        ));
+    }
+
+    // Validate bind address is a parseable IP.
+    if config.server.bind_addr.parse::<std::net::IpAddr>().is_err() {
+        return Err(ConfigError::Validation(format!(
+            "bind_addr '{}' is not a valid IP address",
+            config.server.bind_addr
+        )));
     }
 
     // If replication is enabled, central_url and site_id are required.

@@ -2,7 +2,7 @@
 //
 // TLS Configuration and Enforcement
 //
-// Builds a rustls ServerConfig with secure defaults (TLS 1.2+ only, strong
+// Builds a rustls ServerConfig with secure defaults (TLS 1.3 only, strong
 // ciphersuites) and returns a TlsAcceptor for the LDAPS listener.
 //
 // NIST SP 800-53 Rev. 5:
@@ -187,16 +187,15 @@ fn build_server_config(
     key: PrivateKeyDer<'static>,
     min_version: &str,
 ) -> Result<ServerConfig, TlsError> {
-    // Determine minimum protocol version.
-    let min_protocol = match min_version {
-        "1.2" => &rustls::version::TLS12,
-        "1.3" => &rustls::version::TLS13,
-        other => return Err(TlsError::UnsupportedVersion(other.to_string())),
-    };
+    // Only TLS 1.3 is supported. TLS 1.2 is explicitly excluded.
+    // NIST SC-13: Strongest available cryptographic protection.
+    if min_version != "1.3" {
+        return Err(TlsError::UnsupportedVersion(format!(
+            "'{}' — only TLS 1.3 is supported", min_version
+        )));
+    }
 
-    // Build the config with the default safe provider (ring).
-    // This automatically selects strong ciphersuites and disables weak ones.
-    let config = ServerConfig::builder_with_protocol_versions(&[min_protocol, &rustls::version::TLS13])
+    let config = ServerConfig::builder_with_protocol_versions(&[&rustls::version::TLS13])
         .with_no_client_auth()
         .with_single_cert(certs, key)?;
 

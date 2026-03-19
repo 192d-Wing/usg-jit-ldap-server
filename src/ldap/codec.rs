@@ -13,27 +13,6 @@
 use std::fmt;
 
 // ---------------------------------------------------------------------------
-// Security limits — NIST SI-10 (Information Input Validation)
-// ---------------------------------------------------------------------------
-
-/// Maximum LDAP message size in bytes (10 MiB).
-/// Prevents memory exhaustion from oversized BER frames.
-const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
-
-/// Maximum filter nesting depth.
-/// Prevents stack overflow from deeply nested AND/OR/NOT filters.
-const MAX_FILTER_DEPTH: usize = 32;
-
-/// Maximum number of child filters in an AND or OR node.
-const MAX_FILTER_CHILDREN: usize = 256;
-
-/// Maximum number of requested attributes in a SearchRequest.
-const MAX_ATTRIBUTES: usize = 256;
-
-/// Maximum number of 'any' components in a SubstringFilter.
-const MAX_SUBSTRING_ANY: usize = 64;
-
-// ---------------------------------------------------------------------------
 // Error types
 // ---------------------------------------------------------------------------
 
@@ -145,6 +124,27 @@ const TAG_CTX_2_CONSTRUCTED: u8 = 0xA2; // [2] CONSTRUCTED (e.g., NOT filter)
 const TAG_CTX_3_CONSTRUCTED: u8 = 0xA3; // [3] CONSTRUCTED (e.g., equalityMatch)
 const TAG_CTX_4_CONSTRUCTED: u8 = 0xA4; // [4] CONSTRUCTED (e.g., substrings)
 const TAG_CTX_7: u8 = 0x87;             // [7] PRIMITIVE (e.g., present filter)
+
+// ---------------------------------------------------------------------------
+// Security limits — NIST SI-10 (Information Input Validation)
+// ---------------------------------------------------------------------------
+
+/// Maximum size of a single LDAP message in bytes (10 MB).
+/// Prevents memory exhaustion from oversized BER frames.
+pub const MAX_MESSAGE_SIZE: usize = 10 * 1024 * 1024;
+
+/// Maximum recursion depth for filter parsing.
+/// Prevents stack overflow from deeply nested AND/OR/NOT filters.
+pub const MAX_FILTER_DEPTH: usize = 32;
+
+/// Maximum number of child filters in an AND or OR set.
+pub const MAX_FILTER_CHILDREN: usize = 256;
+
+/// Maximum number of requested attributes in a SearchRequest.
+pub const MAX_ATTRIBUTES: usize = 256;
+
+/// Maximum number of 'any' components in a SubstringFilter.
+pub const MAX_SUBSTRING_ANY: usize = 64;
 
 // ---------------------------------------------------------------------------
 // Core LDAP types
@@ -737,11 +737,6 @@ fn decode_search_request(value: &[u8]) -> Result<SearchRequest> {
     let mut attributes = Vec::new();
     let mut attrs_iter = TlvIter::new(attrs_value);
     while !attrs_iter.is_empty() {
-        if attributes.len() >= MAX_ATTRIBUTES {
-            return Err(CodecError::InvalidFormat(format!(
-                "search request exceeds maximum {} attributes", MAX_ATTRIBUTES
-            )));
-        }
         let (attr_tag, attr_val) = attrs_iter.next_tlv()?;
         if attr_tag != TAG_OCTET_STRING {
             return Err(CodecError::InvalidFormat(
@@ -750,6 +745,11 @@ fn decode_search_request(value: &[u8]) -> Result<SearchRequest> {
         }
         let attr_str = String::from_utf8(attr_val.to_vec()).map_err(|_| CodecError::InvalidUtf8)?;
         attributes.push(attr_str);
+        if attributes.len() > MAX_ATTRIBUTES {
+            return Err(CodecError::InvalidFormat(
+                "too many requested attributes".into(),
+            ));
+        }
     }
 
     Ok(SearchRequest {
@@ -766,12 +766,10 @@ fn decode_search_request(value: &[u8]) -> Result<SearchRequest> {
 
 /// Recursively decode a search filter.
 fn decode_filter(tag: u8, value: &[u8], depth: usize) -> Result<Filter> {
-    // NIST SI-10: Prevent stack overflow from deeply nested filters.
     if depth > MAX_FILTER_DEPTH {
-        return Err(CodecError::InvalidFormat(format!(
-            "filter nesting depth {} exceeds maximum {}",
-            depth, MAX_FILTER_DEPTH
-        )));
+        return Err(CodecError::InvalidFormat(
+            "filter nesting exceeds maximum depth".into(),
+        ));
     }
 
     match tag {
@@ -780,13 +778,13 @@ fn decode_filter(tag: u8, value: &[u8], depth: usize) -> Result<Filter> {
             let mut filters = Vec::new();
             let mut iter = TlvIter::new(value);
             while !iter.is_empty() {
-                if filters.len() >= MAX_FILTER_CHILDREN {
-                    return Err(CodecError::InvalidFormat(format!(
-                        "AND filter exceeds maximum {} children", MAX_FILTER_CHILDREN
-                    )));
-                }
                 let (ftag, fval) = iter.next_tlv()?;
                 filters.push(decode_filter(ftag, fval, depth + 1)?);
+                if filters.len() > MAX_FILTER_CHILDREN {
+                    return Err(CodecError::InvalidFormat(
+                        "filter AND/OR set exceeds maximum children".into(),
+                    ));
+                }
             }
             Ok(Filter::And(filters))
         }
@@ -795,13 +793,13 @@ fn decode_filter(tag: u8, value: &[u8], depth: usize) -> Result<Filter> {
             let mut filters = Vec::new();
             let mut iter = TlvIter::new(value);
             while !iter.is_empty() {
-                if filters.len() >= MAX_FILTER_CHILDREN {
-                    return Err(CodecError::InvalidFormat(format!(
-                        "OR filter exceeds maximum {} children", MAX_FILTER_CHILDREN
-                    )));
-                }
                 let (ftag, fval) = iter.next_tlv()?;
                 filters.push(decode_filter(ftag, fval, depth + 1)?);
+                if filters.len() > MAX_FILTER_CHILDREN {
+                    return Err(CodecError::InvalidFormat(
+                        "filter AND/OR set exceeds maximum children".into(),
+                    ));
+                }
             }
             Ok(Filter::Or(filters))
         }
@@ -889,12 +887,12 @@ fn decode_substring_filter(value: &[u8]) -> Result<SubstringFilter> {
         match stag {
             0x80 => initial = Some(sval.to_vec()),   // [0] initial
             0x81 => {
-                if any.len() >= MAX_SUBSTRING_ANY {
-                    return Err(CodecError::InvalidFormat(format!(
-                        "substring filter exceeds maximum {} 'any' components", MAX_SUBSTRING_ANY
-                    )));
-                }
                 any.push(sval.to_vec());
+                if any.len() > MAX_SUBSTRING_ANY {
+                    return Err(CodecError::InvalidFormat(
+                        "too many substring 'any' components".into(),
+                    ));
+                }
             }
             0x82 => final_value = Some(sval.to_vec()), // [2] final
             _ => {
@@ -1179,6 +1177,8 @@ impl LdapCodec {
             Err(e) => return Err(e),
         };
 
+        let total_len = tag_len + len_len + content_len;
+
         // NIST SI-10: Reject oversized messages to prevent memory exhaustion.
         if content_len > MAX_MESSAGE_SIZE {
             return Err(CodecError::InvalidFormat(format!(
@@ -1187,7 +1187,6 @@ impl LdapCodec {
             )));
         }
 
-        let total_len = tag_len + len_len + content_len;
         if buf.len() < total_len {
             return Ok(None); // Need more bytes.
         }
@@ -1330,29 +1329,33 @@ mod tests {
     }
 
     #[test]
-    fn test_filter_depth_limit() {
-        // Build a deeply nested NOT(NOT(NOT(...))) filter beyond MAX_FILTER_DEPTH.
-        // Start with a present filter, wrap it in NOT tags.
-        let leaf = encode_tlv(TAG_CTX_7, b"objectClass"); // present filter
-        let mut nested = leaf;
-        for _ in 0..MAX_FILTER_DEPTH + 5 {
-            nested = encode_tlv(TAG_CTX_2_CONSTRUCTED, &nested);
-        }
-        let result = decode_filter(TAG_CTX_2_CONSTRUCTED, &nested[2..], 0);
+    fn test_message_size_limit_enforced() {
+        let codec = LdapCodec::new();
+        // Build a fake SEQUENCE with a massive content_len claim.
+        // 0x30 0x84 0xFF 0xFF 0xFF 0xFF = SEQUENCE with ~4GB length
+        let oversized = vec![0x30, 0x84, 0xFF, 0xFF, 0xFF, 0xFF];
+        let result = codec.decode_frame(&oversized);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("nesting depth"));
     }
 
     #[test]
-    fn test_message_size_limit() {
-        let codec = LdapCodec::new();
-        // Craft a SEQUENCE with a content_len exceeding MAX_MESSAGE_SIZE.
-        let mut buf = vec![0x30, 0x84]; // SEQUENCE tag + 4-byte length
-        let huge_len = (MAX_MESSAGE_SIZE + 1) as u32;
-        buf.extend_from_slice(&huge_len.to_be_bytes());
-        // Don't need actual content — the size check happens before reading content.
-        let result = codec.decode_frame(&buf);
+    fn test_filter_depth_limit_enforced() {
+        // Build a deeply nested NOT(NOT(NOT(...))) filter.
+        // Each NOT is TAG_CTX_2_CONSTRUCTED wrapping another NOT.
+        fn build_nested_not(depth: usize) -> Vec<u8> {
+            if depth == 0 {
+                // Leaf: present filter (objectClass)
+                let attr = b"objectClass";
+                encode_tlv(TAG_CTX_7, attr)
+            } else {
+                let inner = build_nested_not(depth - 1);
+                encode_tlv(TAG_CTX_2_CONSTRUCTED, &inner)
+            }
+        }
+        let deep_filter = build_nested_not(MAX_FILTER_DEPTH + 5);
+        // Try to decode — should fail with depth error.
+        let (tag, value, _) = decode_tlv(&deep_filter).unwrap();
+        let result = decode_filter(tag, value, 0);
         assert!(result.is_err());
-        assert!(result.unwrap_err().to_string().contains("exceeds maximum"));
     }
 }

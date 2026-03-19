@@ -265,7 +265,7 @@ impl ReplicationPuller {
     /// 5. Updates the local sequence number.
     /// 6. Returns `PullResult` with statistics.
     #[instrument(skip(self), fields(site_id = %self.config.site_id))]
-    pub async fn pull_once(&self) -> Result<PullResult, anyhow::Error> {
+    pub async fn pull_once(&self) -> Result<PullResult, Box<dyn std::error::Error + Send + Sync>> {
         let start = Instant::now();
 
         // Step 1: Read local replication state.
@@ -279,7 +279,7 @@ impl ReplicationPuller {
         let central_pool = sqlx::PgPool::connect(&self.config.central_url).await?;
 
         // Step 3: Fetch changes from central.
-        let entries = self
+        let entries: Vec<ReplicationLogEntry> = self
             .fetch_changes_from_central(&central_pool, last_seq)
             .await?;
         debug!(entries_count = entries.len(), "Fetched changes from central");
@@ -328,7 +328,7 @@ impl ReplicationPuller {
     }
 
     /// Reads the site's last consumed sequence number from local metadata.
-    async fn read_local_sequence_number(&self) -> Result<i64, anyhow::Error> {
+    async fn read_local_sequence_number(&self) -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
         let row: Option<(i64,)> = sqlx::query_as(
             "SELECT last_sequence_number FROM replication_metadata WHERE site_id = $1",
         )
@@ -361,7 +361,7 @@ impl ReplicationPuller {
         &self,
         central_pool: &sqlx::PgPool,
         since_seq: i64,
-    ) -> Result<Vec<ReplicationLogEntry>, anyhow::Error> {
+    ) -> Result<Vec<ReplicationLogEntry>, Box<dyn std::error::Error + Send + Sync>> {
         let rows = sqlx::query_as::<_, (i64, String, Uuid, serde_json::Value, chrono::DateTime<Utc>)>(
             "SELECT seq_number, change_type, entity_id, payload, created_at \
              FROM replication_log \
@@ -399,7 +399,7 @@ impl ReplicationPuller {
     fn parse_entries(
         &self,
         entries: &[ReplicationLogEntry],
-    ) -> Result<Vec<ReplicationChange>, anyhow::Error> {
+    ) -> Result<Vec<ReplicationChange>, Box<dyn std::error::Error + Send + Sync>> {
         let mut changes = Vec::with_capacity(entries.len());
 
         for entry in entries {
@@ -555,7 +555,7 @@ impl ReplicationPuller {
         &self,
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         changes: &[ReplicationChange],
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         for change in changes {
             match change {
                 ReplicationChange::UserUpsert(user) => {
@@ -694,7 +694,7 @@ impl ReplicationPuller {
         &self,
         tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
         new_seq: i64,
-    ) -> Result<(), anyhow::Error> {
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         sqlx::query(
             "UPDATE replication_metadata \
              SET last_sequence_number = $1, \
@@ -715,12 +715,21 @@ impl ReplicationPuller {
     /// Formula: min(base * 2^(attempt - 1), pull_interval)
     /// This ensures backoff never exceeds the normal pull interval.
     fn compute_backoff(&self, consecutive_failures: u32) -> Duration {
-        let base = self.config.retry_backoff_base_secs;
-        let exponent = consecutive_failures.saturating_sub(1).min(16);
-        let backoff_secs = base.saturating_mul(1u64 << exponent);
-        let max_secs = self.config.pull_interval.as_secs();
-        Duration::from_secs(backoff_secs.min(max_secs))
+        compute_backoff_duration(
+            self.config.retry_backoff_base_secs,
+            self.config.pull_interval.as_secs(),
+            consecutive_failures,
+        )
     }
+}
+
+/// Compute exponential backoff duration.
+///
+/// Extracted as a free function for testability without requiring a PgPool.
+fn compute_backoff_duration(base_secs: u64, max_secs: u64, consecutive_failures: u32) -> Duration {
+    let exponent = consecutive_failures.saturating_sub(1).min(16);
+    let backoff_secs = base_secs.saturating_mul(1u64 << exponent);
+    Duration::from_secs(backoff_secs.min(max_secs))
 }
 
 /// Initiates a full re-sync for a site by resetting its sequence number.
@@ -741,7 +750,7 @@ impl ReplicationPuller {
 pub async fn trigger_full_resync(
     local_pool: &sqlx::PgPool,
     site_id: Uuid,
-) -> Result<(), anyhow::Error> {
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     info!(site_id = %site_id, "Triggering full re-sync: resetting sequence number to 0");
 
     let mut tx = local_pool.begin().await?;
@@ -769,37 +778,37 @@ pub async fn trigger_full_resync(
     Ok(())
 }
 
+/// Spawns a replication puller as a background task.
+///
+/// Returns the task handle and a shared health tracker.
+pub fn spawn_puller(
+    config: ReplicationConfig,
+    local_pool: std::sync::Arc<sqlx::PgPool>,
+) -> (JoinHandle<()>, std::sync::Arc<tokio::sync::Mutex<ReplicationHealth>>) {
+    let health = std::sync::Arc::new(tokio::sync::Mutex::new(ReplicationHealth::new(config.site_id)));
+    let puller = ReplicationPuller::new((*local_pool).clone(), config, health.clone());
+    let handle = puller.start();
+    (handle, health)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn test_backoff_calculation() {
-        let config = ReplicationConfig {
-            retry_backoff_base_secs: 5,
-            pull_interval: Duration::from_secs(60),
-            ..Default::default()
-        };
-        let health = std::sync::Arc::new(tokio::sync::Mutex::new(
-            ReplicationHealth::new(config.site_id),
-        ));
-        let puller = ReplicationPuller {
-            // We can't easily create a PgPool in a unit test, but we can test
-            // the backoff logic directly since it doesn't use the pool.
-            local_pool: unsafe { std::mem::zeroed() },
-            config,
-            health,
-        };
+        let base = 5u64;
+        let max = 60u64;
 
         // First failure: 5 * 2^0 = 5s
-        assert_eq!(puller.compute_backoff(1).as_secs(), 5);
+        assert_eq!(compute_backoff_duration(base, max, 1).as_secs(), 5);
         // Second failure: 5 * 2^1 = 10s
-        assert_eq!(puller.compute_backoff(2).as_secs(), 10);
+        assert_eq!(compute_backoff_duration(base, max, 2).as_secs(), 10);
         // Third failure: 5 * 2^2 = 20s
-        assert_eq!(puller.compute_backoff(3).as_secs(), 20);
+        assert_eq!(compute_backoff_duration(base, max, 3).as_secs(), 20);
         // Fourth failure: 5 * 2^3 = 40s
-        assert_eq!(puller.compute_backoff(4).as_secs(), 40);
+        assert_eq!(compute_backoff_duration(base, max, 4).as_secs(), 40);
         // Fifth failure: 5 * 2^4 = 80s, capped at 60s
-        assert_eq!(puller.compute_backoff(5).as_secs(), 60);
+        assert_eq!(compute_backoff_duration(base, max, 5).as_secs(), 60);
     }
 }

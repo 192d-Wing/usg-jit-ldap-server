@@ -17,8 +17,8 @@ use std::net::SocketAddr;
 use std::time::Instant;
 
 use super::codec::{
-    AuthChoice, BindRequest, BindResponse, CodecError, ExtendedRequest, LdapMessage, LdapResult,
-    ProtocolOp, ResultCode, SearchRequest,
+    AuthChoice, BindRequest, BindResponse, LdapMessage, LdapResult,
+    ProtocolOp, ResultCode,
 };
 
 // ---------------------------------------------------------------------------
@@ -237,8 +237,9 @@ impl LdapSession {
     /// Handle a BindRequest.
     ///
     /// Validates protocol-level constraints (version, auth method) and returns
-    /// a BindResponse. Actual credential verification is delegated to the
-    /// BindHandler (wired by the Runtime agent).
+    /// a BindResponse. NOTE: This method is only called as a fallback. The
+    /// primary bind path goes through LdapHandler.process_message() which
+    /// delegates to BindHandler with real authentication.
     fn dispatch_bind(&mut self, message_id: i32, req: BindRequest) -> Vec<LdapMessage> {
         // NIST IA-2: Identification and authentication check.
 
@@ -293,14 +294,13 @@ impl LdapSession {
             }];
         }
 
-        // Credential verification is performed by the BindHandler (via LdapHandler).
-        // If dispatch_bind is called directly (not through LdapHandler), reject.
-        // This ensures the session layer alone cannot authenticate — the handler must.
-        // NIST IA-2: Authentication requires the full auth pipeline, not just protocol checks.
-        tracing::warn!(
+        // SECURITY: Do NOT authenticate here. This code path should not be
+        // reached in production — LdapHandler.process_message() intercepts
+        // BindRequests and routes them through the Authenticator trait.
+        // If we reach this point, reject the bind as a safety measure.
+        tracing::error!(
             peer = %self.peer_addr,
-            dn = %req.name,
-            "bind rejected: session-layer dispatch cannot authenticate (use LdapHandler)"
+            "bind reached session dispatch_bind — this should be handled by LdapHandler"
         );
         vec![LdapMessage {
             message_id,
@@ -308,7 +308,7 @@ impl LdapSession {
                 result: LdapResult {
                     result_code: ResultCode::Other,
                     matched_dn: String::new(),
-                    diagnostic_message: "internal error: auth pipeline not wired".into(),
+                    diagnostic_message: "internal routing error".into(),
                 },
             }),
         }]
@@ -392,7 +392,7 @@ mod tests {
         assert!(!session.is_bound());
         match &responses[0].protocol_op {
             ProtocolOp::BindResponse(resp) => {
-                assert_ne!(resp.result.result_code, ResultCode::Success);
+                assert_eq!(resp.result.result_code, ResultCode::Other);
             }
             _ => panic!("expected BindResponse"),
         }
