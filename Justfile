@@ -68,3 +68,10 @@ ci-full: fmt-check clippy test audit deny
 # Run fuzz targets (requires nightly)
 fuzz target='fuzz_decode_frame' runs='100000':
     cargo +nightly fuzz run {{target}} -- -max_len=65536 -runs={{runs}}
+
+# Run adversarial pen test scripts (requires running server)
+pentest host='localhost' port='636':
+    python3 tests/adversarial/tls_downgrade.py {{host}} {{port}}
+    python3 tests/adversarial/malformed_ber.py {{host}} {{port}}
+    python3 tests/adversarial/connection_flood.py {{host}} {{port}}
+    python3 tests/adversarial/brute_force.py {{host}} {{port}}
