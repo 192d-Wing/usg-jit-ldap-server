@@ -234,6 +234,10 @@ pub struct AuditSettings {
     /// NIST AU-5: Configurable response to audit processing failures.
     #[serde(default)]
     pub failure_policy: AuditFailurePolicy,
+
+    /// Retention period in days for forwarded audit events. Default: 30.
+    #[serde(default = "default_retention_days")]
+    pub retention_days: u32,
 }
 
 /// Configurable behavior when audit event persistence fails.
@@ -257,6 +261,10 @@ impl Default for AuditFailurePolicy {
 
 fn default_audit_enabled() -> bool {
     true
+}
+
+fn default_retention_days() -> u32 {
+    30
 }
 
 // ---------------------------------------------------------------------------
@@ -514,5 +522,6 @@ enabled = true
         assert_eq!(config.database.max_connections, 10);
         assert_eq!(config.security.password_ttl_secs, 28800);
         assert!(config.audit.enabled);
+        assert_eq!(config.audit.retention_days, 30);
     }
 }
