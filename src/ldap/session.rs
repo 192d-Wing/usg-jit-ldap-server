@@ -293,17 +293,22 @@ impl LdapSession {
             }];
         }
 
-        // Placeholder: actual credential verification will be performed by
-        // the auth module wired through LdapHandler. For now, return success
-        // and transition to Bound.
-        self.transition_to_bound(req.name.clone());
+        // Credential verification is performed by the BindHandler (via LdapHandler).
+        // If dispatch_bind is called directly (not through LdapHandler), reject.
+        // This ensures the session layer alone cannot authenticate — the handler must.
+        // NIST IA-2: Authentication requires the full auth pipeline, not just protocol checks.
+        tracing::warn!(
+            peer = %self.peer_addr,
+            dn = %req.name,
+            "bind rejected: session-layer dispatch cannot authenticate (use LdapHandler)"
+        );
         vec![LdapMessage {
             message_id,
             protocol_op: ProtocolOp::BindResponse(BindResponse {
                 result: LdapResult {
-                    result_code: ResultCode::Success,
+                    result_code: ResultCode::Other,
                     matched_dn: String::new(),
-                    diagnostic_message: String::new(),
+                    diagnostic_message: "internal error: auth pipeline not wired".into(),
                 },
             }),
         }]
@@ -371,7 +376,7 @@ mod tests {
     }
 
     #[test]
-    fn test_bind_transitions_to_bound() {
+    fn test_session_bind_rejects_without_handler() {
         let mut session = LdapSession::new(test_addr());
         let msg = LdapMessage {
             message_id: 1,
@@ -383,10 +388,11 @@ mod tests {
         };
         let responses = session.handle_message(msg);
         assert_eq!(responses.len(), 1);
-        assert!(session.is_bound());
+        // Session-layer bind should reject — real auth goes through LdapHandler.
+        assert!(!session.is_bound());
         match &responses[0].protocol_op {
             ProtocolOp::BindResponse(resp) => {
-                assert_eq!(resp.result.result_code, ResultCode::Success);
+                assert_ne!(resp.result.result_code, ResultCode::Success);
             }
             _ => panic!("expected BindResponse"),
         }
@@ -438,15 +444,8 @@ mod tests {
     #[test]
     fn test_unbind_closes_session() {
         let mut session = LdapSession::new(test_addr());
-        // First bind.
-        session.handle_message(LdapMessage {
-            message_id: 1,
-            protocol_op: ProtocolOp::BindRequest(BindRequest {
-                version: 3,
-                name: "cn=admin".into(),
-                authentication: AuthChoice::Simple(b"pass".to_vec()),
-            }),
-        });
+        // Manually transition to bound (session dispatch no longer auto-authenticates).
+        session.transition_to_bound("cn=admin".into());
         assert!(session.is_bound());
 
         // Then unbind.

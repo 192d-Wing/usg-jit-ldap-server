@@ -78,7 +78,11 @@ pub fn parse_passwd_modify_request(value: &[u8]) -> Result<PasswdModifyRequest, 
         let (field_tag, field_tag_len) = decode_tag(&seq_contents[offset..])?;
         let (field_len, field_len_len) = decode_length(&seq_contents[offset + field_tag_len..])?;
         let header_len = field_tag_len + field_len_len;
-        let field_value = &seq_contents[offset + header_len..offset + header_len + field_len];
+        let end = offset + header_len + field_len;
+        if end > seq_contents.len() {
+            return Err(CodecError::Truncated);
+        }
+        let field_value = &seq_contents[offset + header_len..end];
 
         match field_tag {
             0x80 => {

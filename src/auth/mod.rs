@@ -351,9 +351,15 @@ impl SearchBackend for DatabaseSearchBackend {
         filter: &'a Filter,
         requested_attributes: &'a [String],
         size_limit: i32,
-        _bound_dn: &'a str,
+        bound_dn: &'a str,
     ) -> Pin<Box<dyn Future<Output = SearchOutcome> + Send + 'a>> {
         Box::pin(async move {
+            // NIST AC-3: Log search access for the bound identity.
+            tracing::info!(
+                bound_dn = %bound_dn,
+                base_dn = %base_dn,
+                "search: processing request"
+            );
             // Build filter criteria from the LDAP filter.
             // For v1, we support a subset: equality on cn/uid/mail, presence of objectClass.
             let (username_filter, email_filter) = extract_simple_filters(filter);
