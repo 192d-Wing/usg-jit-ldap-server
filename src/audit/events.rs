@@ -165,6 +165,24 @@ impl AuditEvent {
         }
     }
 
+    /// Create a PasswordModify event with the current timestamp.
+    pub fn password_modify(
+        source: SocketAddr,
+        broker_dn: &str,
+        target_dn: &str,
+        success: bool,
+        failure_reason: Option<&str>,
+    ) -> Self {
+        Self::PasswordModify {
+            timestamp: Utc::now(),
+            source_addr: source.to_string(),
+            broker_dn: broker_dn.to_string(),
+            target_dn: target_dn.to_string(),
+            success,
+            failure_reason: failure_reason.map(|s| s.to_string()),
+        }
+    }
+
     /// Create a RateLimitTriggered event with the current timestamp.
     #[allow(dead_code)]
     pub fn rate_limit_triggered(
@@ -266,6 +284,34 @@ mod tests {
 
         let event = AuditEvent::service_stopped("SIGTERM");
         assert_eq!(event.event_type_name(), "service_stopped");
+    }
+
+    #[test]
+    fn test_password_modify_event() {
+        let event = AuditEvent::password_modify(
+            test_addr(),
+            "cn=broker,ou=services,dc=example,dc=com",
+            "cn=jdoe,dc=example,dc=com",
+            true,
+            None,
+        );
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("password_modify"));
+        assert!(json.contains("cn=broker"));
+        assert!(json.contains("cn=jdoe"));
+        assert_eq!(event.event_type_name(), "password_modify");
+
+        // Test failure case with reason.
+        let event = AuditEvent::password_modify(
+            test_addr(),
+            "cn=broker,ou=services,dc=example,dc=com",
+            "cn=missing,dc=example,dc=com",
+            false,
+            Some("target user not found"),
+        );
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("\"success\":false"));
+        assert!(json.contains("target user not found"));
     }
 
     #[test]

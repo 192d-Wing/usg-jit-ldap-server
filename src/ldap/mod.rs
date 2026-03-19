@@ -21,6 +21,9 @@ use bind::{Authenticator, BindHandler};
 use password::{BrokerAuthorizer, PasswordModifyHandler, PasswordStore, PASSWORD_MODIFY_OID};
 use search::{SearchBackend, SearchHandler};
 
+use crate::audit::AuditLogger;
+use crate::audit::events::AuditEvent;
+
 // ---------------------------------------------------------------------------
 // Top-level LDAP handler
 // ---------------------------------------------------------------------------
@@ -44,6 +47,7 @@ where
     bind_handler: BindHandler<A>,
     search_handler: SearchHandler<B>,
     password_handler: PasswordModifyHandler<S, Z>,
+    audit: AuditLogger,
 }
 
 impl<A, B, S, Z> LdapHandler<A, B, S, Z>
@@ -59,11 +63,13 @@ where
         search_backend: B,
         password_store: S,
         broker_authorizer: Z,
+        audit: AuditLogger,
     ) -> Self {
         Self {
             bind_handler: BindHandler::new(authenticator),
             search_handler: SearchHandler::new(search_backend),
             password_handler: PasswordModifyHandler::new(password_store, broker_authorizer),
+            audit,
         }
     }
 
@@ -149,10 +155,23 @@ where
             }
             ProtocolOp::ExtendedRequest(req) => {
                 if req.request_name == PASSWORD_MODIFY_OID {
-                    let resp = self
+                    let (resp, audit_info) = self
                         .password_handler
                         .handle_password_modify(&req, session)
                         .await;
+
+                    // Emit audit event for the password modify operation.
+                    if let Some(info) = audit_info {
+                        let event = AuditEvent::password_modify(
+                            session.peer_addr(),
+                            &info.broker_dn,
+                            &info.target_dn,
+                            info.success,
+                            info.failure_reason.as_deref(),
+                        );
+                        self.audit.log(event).await;
+                    }
+
                     vec![LdapMessage {
                         message_id,
                         protocol_op: ProtocolOp::ExtendedResponse(resp),
@@ -239,6 +258,7 @@ pub fn placeholder_handler() -> PlaceholderLdapHandler {
         password::StaticBrokerAuthorizer {
             authorized_dns: vec!["cn=broker,ou=services,dc=example,dc=com".into()],
         },
+        AuditLogger::tracing_only(),
     )
 }
 

@@ -326,6 +326,7 @@ async fn handle_connection(
         search_backend,
         password_store,
         ConfigBrokerAuthorizer::new(broker_authorizer.authorized_dns_ref().to_vec()),
+        audit.clone(),
     );
 
     // Create the session state machine for this connection.
