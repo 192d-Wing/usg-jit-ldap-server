@@ -29,7 +29,7 @@ use crate::audit::events::{AuditEvent, BindOutcome};
 use crate::audit::AuditLogger;
 use crate::ldap::bind::{AuthResult, Authenticator};
 
-use rate_limit::RateLimiter;
+use rate_limit::{RateLimiter, SearchRateLimiter};
 
 // ---------------------------------------------------------------------------
 // DatabaseAuthenticator
@@ -398,12 +398,14 @@ use crate::ldap::search::{DirectoryEntry, SearchBackend, SearchOutcome};
 /// Never accesses the runtime schema (passwords, bind events, etc.).
 pub struct DatabaseSearchBackend {
     pool: Arc<PgPool>,
+    search_rate_limiter: SearchRateLimiter,
+    peer_addr: SocketAddr,
 }
 
 impl DatabaseSearchBackend {
     /// Create a new search backend.
-    pub fn new(pool: Arc<PgPool>) -> Self {
-        Self { pool }
+    pub fn new(pool: Arc<PgPool>, search_rate_limiter: SearchRateLimiter, peer_addr: SocketAddr) -> Self {
+        Self { pool, search_rate_limiter, peer_addr }
     }
 }
 
@@ -418,6 +420,16 @@ impl SearchBackend for DatabaseSearchBackend {
         bound_dn: &'a str,
     ) -> Pin<Box<dyn Future<Output = SearchOutcome> + Send + 'a>> {
         Box::pin(async move {
+            // NIST SI-10: Per-IP search rate limit check.
+            let source_ip = self.peer_addr.ip().to_string();
+            if let Err(_) = self.search_rate_limiter.check_and_increment(&source_ip).await {
+                return SearchOutcome {
+                    entries: Vec::new(),
+                    result_code: ResultCode::Busy,
+                    diagnostic: "search rate limit exceeded".into(),
+                };
+            }
+
             // NIST AC-3: Log search access for the bound identity.
             tracing::info!(
                 bound_dn = %bound_dn,

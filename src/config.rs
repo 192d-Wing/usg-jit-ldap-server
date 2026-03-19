@@ -189,6 +189,14 @@ pub struct SecuritySettings {
     #[serde(default = "default_password_ttl_secs")]
     pub password_ttl_secs: u64,
 
+    /// Maximum search operations per source IP per window. Default: 120.
+    #[serde(default = "default_max_searches_per_minute")]
+    pub max_searches_per_minute: u32,
+
+    /// Search rate limit window in seconds. Default: 60.
+    #[serde(default = "default_search_rate_window_secs")]
+    pub search_rate_window_secs: u64,
+
     /// DNs authorized to invoke the Password Modify extended operation.
     /// NIST AC-3: Only recognized broker identities may set passwords.
     #[serde(default)]
@@ -197,6 +205,14 @@ pub struct SecuritySettings {
 
 fn default_password_ttl_secs() -> u64 {
     28800
+}
+
+fn default_max_searches_per_minute() -> u32 {
+    120
+}
+
+fn default_search_rate_window_secs() -> u64 {
+    60
 }
 
 /// Audit logging configuration.

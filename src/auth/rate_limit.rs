@@ -152,6 +152,79 @@ impl RateLimiter {
 }
 
 // ---------------------------------------------------------------------------
+// Search rate limiter
+// ---------------------------------------------------------------------------
+
+/// Per-IP search rate limiter.
+///
+/// NIST SI-10: Prevents search-based enumeration attacks.
+#[derive(Clone)]
+pub struct SearchRateLimiter {
+    pool: Arc<PgPool>,
+    max_searches: u32,
+    window_secs: u64,
+}
+
+impl SearchRateLimiter {
+    pub fn new(pool: Arc<PgPool>, max_searches: u32, window_secs: u64) -> Self {
+        Self { pool, max_searches, window_secs }
+    }
+
+    /// Check whether a search from the given IP is allowed.
+    pub async fn check_and_increment(&self, source_ip: &str) -> Result<(), RateLimitError> {
+        if source_ip.is_empty() {
+            return Err(RateLimitError::Exceeded {
+                dn: source_ip.to_string(),
+                attempts: 0,
+                window_secs: self.window_secs,
+            });
+        }
+
+        let count = sqlx::query_scalar::<_, i32>(
+            r#"
+            INSERT INTO runtime.search_rate_limit_state (source_ip, search_count, window_start)
+            VALUES ($1::inet, 1, now())
+            ON CONFLICT (source_ip) DO UPDATE
+            SET
+                search_count = CASE
+                    WHEN runtime.search_rate_limit_state.window_start
+                         + make_interval(secs => $2::double precision) < now()
+                    THEN 1
+                    ELSE runtime.search_rate_limit_state.search_count + 1
+                END,
+                window_start = CASE
+                    WHEN runtime.search_rate_limit_state.window_start
+                         + make_interval(secs => $2::double precision) < now()
+                    THEN now()
+                    ELSE runtime.search_rate_limit_state.window_start
+                END
+            RETURNING search_count
+            "#,
+        )
+        .bind(source_ip)
+        .bind(self.window_secs as f64)
+        .fetch_one(self.pool.as_ref())
+        .await?;
+
+        if count > self.max_searches as i32 {
+            tracing::warn!(
+                source_ip = %source_ip,
+                search_count = count,
+                max = self.max_searches,
+                "search rate limit exceeded"
+            );
+            Err(RateLimitError::Exceeded {
+                dn: source_ip.to_string(),
+                attempts: count as u32,
+                window_secs: self.window_secs,
+            })
+        } else {
+            Ok(())
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 
