@@ -1,0 +1,39 @@
+# Rust
+/target/
+**/*.rs.bk
+Cargo.lock
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Environment / Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crt
+*.p12
+*.pfx
+
+# Database
+*.sql.bak
+
+# Build artifacts
+*.d
+*.o
+*.so
+*.dylib
+
+# Test artifacts
+/coverage/
+*.profraw
+*.profdata
