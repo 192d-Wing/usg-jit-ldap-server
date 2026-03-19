@@ -47,3 +47,10 @@ clean:
 
 # Run all CI checks locally (fmt, clippy, test)
 ci: fmt-check clippy test
+
+# Run adversarial pen test scripts (requires running server)
+pentest host='localhost' port='636':
+    python3 tests/adversarial/tls_downgrade.py {{host}} {{port}}
+    python3 tests/adversarial/malformed_ber.py {{host}} {{port}}
+    python3 tests/adversarial/connection_flood.py {{host}} {{port}}
+    python3 tests/adversarial/brute_force.py {{host}} {{port}}
