@@ -47,3 +47,5 @@ x509-parser = "0.16"
 
 [dev-dependencies]
 proptest = "1"
+rcgen = "0.13"
+tempfile = "3"
