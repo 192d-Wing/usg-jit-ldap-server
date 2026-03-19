@@ -23,7 +23,7 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 zeroize = { version = "1", features = ["derive"] }
 
 # Database
-sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "macros", "migrate"] }
+sqlx = { version = "0.8", features = ["runtime-tokio-rustls", "postgres", "macros", "migrate", "uuid", "chrono", "json"] }
 
 # ASN.1 / LDAP codec
 rasn = "0.22"
@@ -42,3 +42,9 @@ thiserror = "2"
 
 # Byte buffers
 bytes = "1"
+
+# UUID generation
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
