@@ -53,6 +53,12 @@ audit:
 deny:
     cargo deny check
 
+# Run integration tests (requires PostgreSQL)
+test-integration:
+    docker compose -f docker-compose.test.yml up -d --wait
+    DATABASE_URL="postgresql://ldap_test:ldap_test_password@localhost:5433/ldap_test" cargo test --test '*' -- --nocapture
+    docker compose -f docker-compose.test.yml down
+
 # Run all CI checks locally (fmt, clippy, test)
 ci: fmt-check clippy test
 
