@@ -213,10 +213,18 @@ pub struct AuditSettings {
     /// Optional file path for audit log output. If omitted, audit events
     /// are emitted via the tracing subscriber (stdout/structured logging).
     pub log_path: Option<String>,
+
+    /// Retention period in days for forwarded audit events. Default: 30.
+    #[serde(default = "default_retention_days")]
+    pub retention_days: u32,
 }
 
 fn default_audit_enabled() -> bool {
     true
+}
+
+fn default_retention_days() -> u32 {
+    30
 }
 
 // ---------------------------------------------------------------------------
@@ -474,5 +482,6 @@ enabled = true
         assert_eq!(config.database.max_connections, 10);
         assert_eq!(config.security.password_ttl_secs, 28800);
         assert!(config.audit.enabled);
+        assert_eq!(config.audit.retention_days, 30);
     }
 }

@@ -154,6 +154,31 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         None
     };
 
+    // Spawn periodic cleanup task for audit queue and expired passwords.
+    {
+        let cleanup_pool = pg_pool.clone();
+        let retention_days = server_config.audit.retention_days;
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600));
+            loop {
+                interval.tick().await;
+                // Clean forwarded audit events.
+                match crate::db::runtime::cleanup_forwarded_audit_events(&cleanup_pool, retention_days).await {
+                    Ok(n) if n > 0 => tracing::info!(deleted = n, "audit queue cleanup completed"),
+                    Err(e) => tracing::warn!(error = %e, "audit queue cleanup failed"),
+                    _ => {}
+                }
+                // Clean stale passwords.
+                match crate::db::runtime::cleanup_stale_passwords(&cleanup_pool).await {
+                    Ok(n) if n > 0 => tracing::info!(deleted = n, "stale password cleanup completed"),
+                    Err(e) => tracing::warn!(error = %e, "stale password cleanup failed"),
+                    _ => {}
+                }
+            }
+        });
+        tracing::info!(retention_days = retention_days, "periodic cleanup task started (hourly)");
+    }
+
     // Step 6: Bind LDAPS listener.
     let listen_addr: SocketAddr = format!(
         "{}:{}",

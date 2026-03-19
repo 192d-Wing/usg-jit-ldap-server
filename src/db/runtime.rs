@@ -297,3 +297,50 @@ impl<'a> RuntimeRepository<'a> {
         Ok(result.rows_affected())
     }
 }
+
+// ────────────────────────────────────────────────────────────
+// Standalone cleanup functions
+// ────────────────────────────────────────────────────────────
+
+/// Delete forwarded audit events older than the retention period.
+///
+/// Events that have been successfully forwarded to the central SIEM no
+/// longer need to reside in the local audit queue. This function removes
+/// them once they exceed the configured retention window.
+///
+/// Returns the number of rows deleted.
+pub async fn cleanup_forwarded_audit_events(
+    pool: &PgPool,
+    retention_days: u32,
+) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query(
+        r#"
+        DELETE FROM runtime.audit_queue
+        WHERE forwarded = TRUE
+          AND forwarded_at < now() - make_interval(days => $1::int)
+        "#,
+    )
+    .bind(retention_days as i32)
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected())
+}
+
+/// Delete expired and used ephemeral passwords older than 24 hours.
+///
+/// Passwords that are expired, used, or revoked and older than 24 hours
+/// are no longer needed for authentication or audit correlation.
+///
+/// Returns the number of rows deleted.
+pub async fn cleanup_stale_passwords(pool: &PgPool) -> Result<u64, sqlx::Error> {
+    let result = sqlx::query(
+        r#"
+        DELETE FROM runtime.ephemeral_passwords
+        WHERE (used = TRUE OR revoked = TRUE OR expires_at < now())
+          AND issued_at < now() - interval '24 hours'
+        "#,
+    )
+    .execute(pool)
+    .await?;
+    Ok(result.rows_affected())
+}
