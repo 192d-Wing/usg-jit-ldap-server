@@ -75,3 +75,9 @@ pentest host='localhost' port='636':
     python3 tests/adversarial/malformed_ber.py {{host}} {{port}}
     python3 tests/adversarial/connection_flood.py {{host}} {{port}}
     python3 tests/adversarial/brute_force.py {{host}} {{port}}
+
+# Generate CycloneDX SBOM
+sbom:
+    cargo install cargo-cyclonedx 2>/dev/null || true
+    cargo cyclonedx --format json
+    @echo "SBOM generated: bom.json"
