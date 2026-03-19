@@ -1358,4 +1358,96 @@ mod tests {
         let result = decode_filter(tag, value, 0);
         assert!(result.is_err());
     }
+
+    // -----------------------------------------------------------------------
+    // Property-based tests (proptest)
+    // -----------------------------------------------------------------------
+
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn prop_integer_round_trip(val in proptest::num::i64::ANY) {
+            let encoded = encode_integer(val);
+            let (decoded, consumed) = decode_integer(&encoded).unwrap();
+            prop_assert_eq!(decoded, val);
+            prop_assert_eq!(consumed, encoded.len());
+        }
+
+        #[test]
+        fn prop_length_round_trip(len in 0usize..MAX_MESSAGE_SIZE) {
+            let encoded = encode_length(len);
+            let (decoded, consumed) = decode_length(&encoded).unwrap();
+            prop_assert_eq!(decoded, len);
+            prop_assert_eq!(consumed, encoded.len());
+        }
+
+        #[test]
+        fn prop_octet_string_round_trip(data in proptest::collection::vec(proptest::num::u8::ANY, 0..4096)) {
+            let encoded = encode_octet_string(&data);
+            let (decoded, consumed) = decode_octet_string(&encoded).unwrap();
+            prop_assert_eq!(decoded, data);
+            prop_assert_eq!(consumed, encoded.len());
+        }
+
+        #[test]
+        fn prop_boolean_round_trip(val: bool) {
+            let encoded = encode_boolean(val);
+            let (decoded, consumed) = decode_boolean(&encoded).unwrap();
+            prop_assert_eq!(decoded, val);
+            prop_assert_eq!(consumed, encoded.len());
+        }
+
+        #[test]
+        fn prop_enumerated_round_trip(val in 0i64..256) {
+            let encoded = encode_enumerated(val);
+            let (decoded, consumed) = decode_enumerated(&encoded).unwrap();
+            prop_assert_eq!(decoded, val);
+            prop_assert_eq!(consumed, encoded.len());
+        }
+
+        #[test]
+        fn prop_bind_request_round_trip(
+            msg_id in 1i32..10000,
+            dn in "[a-z]{2,10}=[a-z]{2,20},dc=[a-z]{3,10},dc=[a-z]{2,5}",
+            password in proptest::collection::vec(proptest::num::u8::ANY, 1..64),
+        ) {
+            let msg = LdapMessage {
+                message_id: msg_id,
+                protocol_op: ProtocolOp::BindRequest(BindRequest {
+                    version: 3,
+                    name: dn.clone(),
+                    authentication: AuthChoice::Simple(password.clone()),
+                }),
+            };
+            let encoded = encode_ldap_message(&msg).unwrap();
+            let (decoded, consumed) = decode_ldap_message(&encoded).unwrap();
+            prop_assert_eq!(consumed, encoded.len());
+            prop_assert_eq!(decoded.message_id, msg_id);
+            match decoded.protocol_op {
+                ProtocolOp::BindRequest(req) => {
+                    prop_assert_eq!(req.version, 3);
+                    prop_assert_eq!(req.name, dn);
+                    match req.authentication {
+                        AuthChoice::Simple(pw) => prop_assert_eq!(pw, password),
+                        _ => prop_assert!(false, "expected Simple auth"),
+                    }
+                }
+                _ => prop_assert!(false, "expected BindRequest"),
+            }
+        }
+
+        #[test]
+        fn prop_decode_never_panics_on_random_input(data in proptest::collection::vec(proptest::num::u8::ANY, 0..1024)) {
+            // This is the most important property: the codec must never panic on arbitrary input.
+            let codec = LdapCodec::new();
+            let _ = codec.decode_frame(&data);
+        }
+
+        #[test]
+        fn prop_decode_filter_never_panics(data in proptest::collection::vec(proptest::num::u8::ANY, 1..512)) {
+            let tag = data[0];
+            let _ = decode_filter(tag, &data[1..], 0);
+        }
+    }
 }
