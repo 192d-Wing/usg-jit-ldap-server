@@ -765,7 +765,7 @@ fn decode_search_request(value: &[u8]) -> Result<SearchRequest> {
 }
 
 /// Recursively decode a search filter.
-fn decode_filter(tag: u8, value: &[u8], depth: usize) -> Result<Filter> {
+pub(crate) fn decode_filter(tag: u8, value: &[u8], depth: usize) -> Result<Filter> {
     if depth > MAX_FILTER_DEPTH {
         return Err(CodecError::InvalidFormat(
             "filter nesting exceeds maximum depth".into(),

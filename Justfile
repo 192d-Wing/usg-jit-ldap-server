@@ -47,3 +47,7 @@ clean:
 
 # Run all CI checks locally (fmt, clippy, test)
 ci: fmt-check clippy test
+
+# Run fuzz targets (requires nightly)
+fuzz target='fuzz_decode_frame' runs='100000':
+    cargo +nightly fuzz run {{target}} -- -max_len=65536 -runs={{runs}}

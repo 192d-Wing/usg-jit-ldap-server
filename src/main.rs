@@ -22,13 +22,13 @@
 // - SC-23 (Session Authenticity): One session per TLS connection.
 // - AU-2 (Audit Events): Service lifecycle events are logged.
 
-mod audit;
-mod auth;
-mod config;
-mod db;
-mod ldap;
-mod replication;
-mod tls;
+use usg_jit_ldap_server::audit;
+use usg_jit_ldap_server::auth;
+use usg_jit_ldap_server::config;
+use usg_jit_ldap_server::db;
+use usg_jit_ldap_server::ldap;
+use usg_jit_ldap_server::replication;
+use usg_jit_ldap_server::tls;
 
 use std::net::SocketAddr;
 use std::sync::Arc;
