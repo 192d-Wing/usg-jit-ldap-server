@@ -42,5 +42,8 @@ uuid = { version = "1", features = ["v4", "serde"] }
 # Date/time
 chrono = { version = "0.4", features = ["serde"] }
 
+# Certificate parsing for expiry monitoring
+x509-parser = "0.16"
+
 [dev-dependencies]
 proptest = "1"

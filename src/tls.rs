@@ -204,30 +204,70 @@ fn build_server_config(
 
 /// Log certificate metadata for operational awareness.
 ///
-/// NIST SC-17: Logs subject and issuer information from DER-encoded certificates.
-/// This uses basic DER inspection since we do not pull in a full x509 parser.
-/// In production, operators should verify certificate details via openssl CLI.
+/// NIST SC-17: Logs subject, issuer, and validity period from DER-encoded
+/// certificates. Warns on approaching expiry.
 fn log_certificate_info(certs: &[CertificateDer<'static>]) {
     for (i, cert) in certs.iter().enumerate() {
         let cert_bytes = cert.as_ref();
-        let cert_len = cert_bytes.len();
+        let position = if i == 0 { "leaf" } else { "chain" };
 
-        // We log the chain position and size. Full certificate parsing
-        // (subject, expiry) would require an x509 crate. For now, we log
-        // enough for operators to correlate with their certificate inventory.
-        if i == 0 {
-            tracing::info!(
-                chain_position = "leaf",
-                cert_size_bytes = cert_len,
-                "TLS certificate [0]: leaf/server certificate"
-            );
-        } else {
-            tracing::info!(
-                chain_position = i,
-                cert_size_bytes = cert_len,
-                "TLS certificate [{}]: intermediate/root CA",
-                i
-            );
+        match x509_parser::parse_x509_certificate(cert_bytes) {
+            Ok((_, parsed)) => {
+                let subject = parsed.subject().to_string();
+                let issuer = parsed.issuer().to_string();
+                let not_before = parsed.validity().not_before.to_datetime();
+                let not_after = parsed.validity().not_after.to_datetime();
+
+                tracing::info!(
+                    chain_position = position,
+                    chain_index = i,
+                    subject = %subject,
+                    issuer = %issuer,
+                    not_before = %not_before,
+                    not_after = %not_after,
+                    "TLS certificate loaded"
+                );
+
+                // Check expiry — warn operators proactively.
+                let expiry: std::time::SystemTime = not_after.into();
+                let now = std::time::SystemTime::now();
+                if let Ok(remaining) = expiry.duration_since(now) {
+                    let days_remaining = remaining.as_secs() / 86400;
+                    if days_remaining < 7 {
+                        tracing::error!(
+                            days_remaining = days_remaining,
+                            subject = %subject,
+                            "CRITICAL: TLS certificate expires in less than 7 days"
+                        );
+                    } else if days_remaining < 30 {
+                        tracing::warn!(
+                            days_remaining = days_remaining,
+                            subject = %subject,
+                            "TLS certificate expires in less than 30 days"
+                        );
+                    } else {
+                        tracing::info!(
+                            days_remaining = days_remaining,
+                            "TLS certificate expiry check passed"
+                        );
+                    }
+                } else {
+                    tracing::error!(
+                        subject = %subject,
+                        "CRITICAL: TLS certificate has already expired"
+                    );
+                }
+            }
+            Err(e) => {
+                // Fall back to basic logging if parsing fails.
+                tracing::warn!(
+                    chain_position = position,
+                    chain_index = i,
+                    cert_size_bytes = cert_bytes.len(),
+                    error = %e,
+                    "failed to parse certificate DER — falling back to size-only logging"
+                );
+            }
         }
     }
 }
