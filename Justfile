@@ -45,5 +45,16 @@ check:
 clean:
     cargo clean
 
+# Security audit of dependencies
+audit:
+    cargo audit
+
+# Check dependency licenses and advisories
+deny:
+    cargo deny check
+
 # Run all CI checks locally (fmt, clippy, test)
 ci: fmt-check clippy test
+
+# Full CI pipeline (local)
+ci-full: fmt-check clippy test audit deny
