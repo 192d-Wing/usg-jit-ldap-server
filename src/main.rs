@@ -40,7 +40,7 @@ use tokio::sync::Semaphore;
 use audit::events::AuditEvent;
 use audit::AuditLogger;
 use auth::{ConfigBrokerAuthorizer, DatabaseAuthenticator, DatabasePasswordStore, DatabaseSearchBackend};
-use auth::rate_limit::RateLimiter;
+use auth::rate_limit::{RateLimiter, SearchRateLimiter};
 use db::pool::DbPool;
 use ldap::codec::LdapCodec;
 use ldap::session::LdapSession;
@@ -183,6 +183,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         server_config.security.max_bind_attempts,
         server_config.security.rate_limit_window_secs,
     );
+    let search_rate_limiter = SearchRateLimiter::new(
+        pg_pool.clone(),
+        server_config.security.max_searches_per_minute,
+        server_config.security.search_rate_window_secs,
+    );
     let broker_authorizer = Arc::new(ConfigBrokerAuthorizer::new(
         server_config.security.broker_dns.clone(),
     ));
@@ -220,6 +225,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let tls_acceptor = tls_acceptor.clone();
                         let pool = pg_pool.clone();
                         let rate_limiter = rate_limiter.clone();
+                        let search_rate_limiter = search_rate_limiter.clone();
                         let audit = audit_logger.clone();
                         let broker_auth = broker_authorizer.clone();
                         let password_ttl = password_ttl;
@@ -257,6 +263,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 peer_addr,
                                 pool,
                                 rate_limiter,
+                                search_rate_limiter,
                                 audit,
                                 broker_auth,
                                 password_ttl,
@@ -300,6 +307,7 @@ async fn handle_connection(
     peer_addr: SocketAddr,
     pool: Arc<sqlx::PgPool>,
     rate_limiter: RateLimiter,
+    search_rate_limiter: SearchRateLimiter,
     audit: AuditLogger,
     broker_authorizer: Arc<ConfigBrokerAuthorizer>,
     password_ttl: u64,
@@ -316,7 +324,7 @@ async fn handle_connection(
         audit.clone(),
         peer_addr,
     );
-    let search_backend = DatabaseSearchBackend::new(pool.clone());
+    let search_backend = DatabaseSearchBackend::new(pool.clone(), search_rate_limiter, peer_addr);
     let password_store = DatabasePasswordStore::new(pool.clone(), password_ttl);
 
     // Construct the LdapHandler with concrete backends.
