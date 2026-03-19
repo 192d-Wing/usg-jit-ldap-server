@@ -1,50 +1,124 @@
 # USG JIT LDAP Server — Example Configuration
 # Copy this file to config.toml and adjust values for your environment.
 
+# ---------------------------------------------------------------------------
+# Server
+# ---------------------------------------------------------------------------
 [server]
 # Address to bind the LDAP listener on.
 bind_addr = "0.0.0.0"
-# LDAPS port (636 is the standard for LDAP over TLS).
+
+# LDAPS port (636 is the IANA-standard port for LDAP over TLS).
 port = 636
 
+# Set to true to allow binding on a non-standard port (e.g. during
+# development or when running behind a load-balancer on an alternate port).
+allow_non_standard_port = false
+
+# Maximum number of concurrent client connections the server will accept.
+max_connections = 1024
+
+# Seconds of inactivity before an idle connection is closed.
+idle_timeout_secs = 300
+
+# ---------------------------------------------------------------------------
+# TLS — only TLS 1.3 is supported
+# ---------------------------------------------------------------------------
 [tls]
-# Path to the PEM-encoded server certificate chain.
+# Path to the PEM-encoded server certificate (or full chain).
 cert_path = "/etc/ldap-server/certs/server.crt"
-# Path to the PEM-encoded private key.
+
+# Path to the PEM-encoded private key corresponding to cert_path.
 key_path = "/etc/ldap-server/certs/server.key"
-# Optional: path to a CA bundle for client-certificate (mTLS) verification.
-# ca_path = "/etc/ldap-server/certs/ca.crt"
 
+# Minimum TLS version accepted by the server. Only "1.3" is supported;
+# older protocol versions are rejected to meet USG security requirements.
+min_version = "1.3"
+
+# NOTE: ca_path has been removed. Mutual-TLS (mTLS) client verification is
+# not currently supported. Broker authentication is handled at the LDAP BIND
+# layer using JIT credentials.
+
+# ---------------------------------------------------------------------------
+# Database (PostgreSQL)
+# ---------------------------------------------------------------------------
 [database]
-# PostgreSQL connection URL. Can also be set via DATABASE_URL env var.
+# PostgreSQL connection URL. Can also be set via the DATABASE_URL env var.
 url = "postgresql://ldap_server:changeme@localhost:5432/ldap_server"
-# Maximum number of connections in the pool.
-max_connections = 10
-# Schema for authoritative identity data (replicated from central).
-identity_schema = "identity"
-# Schema for JIT-provisioned runtime data (local to this site).
-runtime_schema = "runtime"
 
+# Maximum number of connections in the sqlx connection pool.
+max_connections = 10
+
+# ---------------------------------------------------------------------------
+# Replication
+# ---------------------------------------------------------------------------
 [replication]
-# Enable periodic pull from the central identity authority.
+# Enable periodic pull replication from the central identity authority.
 enabled = false
-# URL of the central identity service.
+
+# URL of the central identity service replication endpoint.
 # central_url = "https://central.example.gov/api/v1/identities"
-# How often to pull updates, in seconds.
+
+# How often (in seconds) to pull updates from central.
 pull_interval_secs = 300
-# Unique identifier for this site (used in replication protocol).
+
+# Unique identifier for this site within the replication topology.
+# Must be unique across all replicated sites.
 # site_id = "site-alpha"
 
+# Number of identity records to fetch per replication request.
+batch_size = 500
+
+# Maximum number of retry attempts when a replication pull fails before
+# backing off and waiting for the next scheduled interval.
+max_retry_attempts = 3
+
+# A site is considered stale if it has not successfully replicated within
+# this many seconds. Health checks will report degraded status.
+stale_threshold_secs = 900
+
+# ---------------------------------------------------------------------------
+# Security
+# ---------------------------------------------------------------------------
 [security]
-# Maximum failed BIND attempts before rate-limiting kicks in.
+# Maximum failed BIND attempts from a single source before rate-limiting
+# kicks in.
 max_bind_attempts = 5
-# Sliding window (seconds) for counting failed BIND attempts.
+
+# Sliding window (in seconds) over which failed BIND attempts are counted.
 rate_limit_window_secs = 300
-# Time-to-live for JIT-provisioned passwords, in seconds (default: 8 hours).
+
+# Time-to-live for JIT-provisioned passwords, in seconds (default: 8 h).
 password_ttl_secs = 28800
 
+# DNS name (or comma-separated names) of authorized brokers that may
+# request JIT credential provisioning.
+# broker_dns = "broker.example.gov"
+
+# Maximum number of LDAP search operations a single connection may issue
+# per minute. 0 = unlimited. (planned)
+# max_searches_per_minute = 0
+
+# Sliding window (in seconds) over which search operations are counted
+# for rate-limiting purposes. (planned)
+# search_rate_window_secs = 60
+
+# ---------------------------------------------------------------------------
+# Audit
+# ---------------------------------------------------------------------------
 [audit]
-# Enable structured audit logging of security events.
+# Enable structured audit logging of security-relevant events.
 enabled = true
-# Path to the audit log file. Omit to log to stdout.
+
+# Path to the audit log file. Omit (or comment out) to log to stdout.
 # log_path = "/var/log/ldap-server/audit.jsonl"
+
+# Number of days to retain audit log files before automatic rotation
+# deletes them. 0 = retain indefinitely. (planned)
+# retention_days = 90
+
+# Behaviour when the audit subsystem cannot write (e.g. disk full):
+#   "halt"  — refuse new operations until logging recovers (safest)
+#   "warn"  — log a warning and continue operating (less safe)
+# (planned)
+# failure_policy = "halt"
