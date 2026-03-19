@@ -1,0 +1,50 @@
+# USG JIT LDAP Server — Example Configuration
+# Copy this file to config.toml and adjust values for your environment.
+
+[server]
+# Address to bind the LDAP listener on.
+bind_addr = "0.0.0.0"
+# LDAPS port (636 is the standard for LDAP over TLS).
+port = 636
+
+[tls]
+# Path to the PEM-encoded server certificate chain.
+cert_path = "/etc/ldap-server/certs/server.crt"
+# Path to the PEM-encoded private key.
+key_path = "/etc/ldap-server/certs/server.key"
+# Optional: path to a CA bundle for client-certificate (mTLS) verification.
+# ca_path = "/etc/ldap-server/certs/ca.crt"
+
+[database]
+# PostgreSQL connection URL. Can also be set via DATABASE_URL env var.
+url = "postgresql://ldap_server:changeme@localhost:5432/ldap_server"
+# Maximum number of connections in the pool.
+max_connections = 10
+# Schema for authoritative identity data (replicated from central).
+identity_schema = "identity"
+# Schema for JIT-provisioned runtime data (local to this site).
+runtime_schema = "runtime"
+
+[replication]
+# Enable periodic pull from the central identity authority.
+enabled = false
+# URL of the central identity service.
+# central_url = "https://central.example.gov/api/v1/identities"
+# How often to pull updates, in seconds.
+pull_interval_secs = 300
+# Unique identifier for this site (used in replication protocol).
+# site_id = "site-alpha"
+
+[security]
+# Maximum failed BIND attempts before rate-limiting kicks in.
+max_bind_attempts = 5
+# Sliding window (seconds) for counting failed BIND attempts.
+rate_limit_window_secs = 300
+# Time-to-live for JIT-provisioned passwords, in seconds (default: 8 hours).
+password_ttl_secs = 28800
+
+[audit]
+# Enable structured audit logging of security events.
+enabled = true
+# Path to the audit log file. Omit to log to stdout.
+# log_path = "/var/log/ldap-server/audit.jsonl"
