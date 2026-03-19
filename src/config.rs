@@ -213,6 +213,30 @@ pub struct AuditSettings {
     /// Optional file path for audit log output. If omitted, audit events
     /// are emitted via the tracing subscriber (stdout/structured logging).
     pub log_path: Option<String>,
+
+    /// Behavior when audit event persistence fails.
+    /// NIST AU-5: Configurable response to audit processing failures.
+    #[serde(default)]
+    pub failure_policy: AuditFailurePolicy,
+}
+
+/// Configurable behavior when audit event persistence fails.
+///
+/// NIST AU-5 (Response to Audit Processing Failures): Organizations must
+/// define the action to take when audit storage is exhausted or write fails.
+#[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum AuditFailurePolicy {
+    /// Log warning, continue processing (current behavior).
+    FailOpen,
+    /// Return error, reject the operation.
+    FailClosed,
+}
+
+impl Default for AuditFailurePolicy {
+    fn default() -> Self {
+        Self::FailOpen
+    }
 }
 
 fn default_audit_enabled() -> bool {

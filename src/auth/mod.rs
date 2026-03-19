@@ -261,7 +261,12 @@ impl Authenticator for DatabaseAuthenticator {
                     dn,
                     BindOutcome::InvalidCredentials,
                 );
-                self.audit.log(event).await;
+                // NIST AU-5: In fail-closed mode, reject the bind if audit
+                // persistence fails for credential failure events too.
+                if let Err(e) = self.audit.log_checked(event).await {
+                    tracing::error!(error = %e, "audit persistence failed in fail-closed mode");
+                    return AuthResult::InternalError("audit system unavailable".into());
+                }
                 return AuthResult::InvalidCredentials;
             }
 
@@ -314,7 +319,13 @@ impl Authenticator for DatabaseAuthenticator {
                 dn,
                 BindOutcome::Success,
             );
-            self.audit.log(event).await;
+            // NIST AU-5: In fail-closed mode, reject the bind if audit
+            // persistence fails. This ensures every successful authentication
+            // has a durable audit record.
+            if let Err(e) = self.audit.log_checked(event).await {
+                tracing::error!(error = %e, "audit persistence failed in fail-closed mode");
+                return AuthResult::InternalError("audit system unavailable".into());
+            }
 
             tracing::info!(dn = %dn, peer = %self.peer_addr, "bind: success");
             AuthResult::Success
