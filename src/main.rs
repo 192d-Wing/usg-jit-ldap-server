@@ -137,7 +137,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     // Create the audit logger (now with database backing).
-    let audit_logger = AuditLogger::new(pg_pool.clone(), server_config.audit.enabled);
+    let audit_logger = AuditLogger::new(
+        pg_pool.clone(),
+        server_config.audit.enabled,
+        server_config.audit.failure_policy,
+    );
 
     // Step 5: Start replication puller if enabled.
     let _replication_handle = if server_config.replication.enabled {
