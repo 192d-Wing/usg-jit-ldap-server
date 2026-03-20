@@ -37,3 +37,6 @@ Thumbs.db
 /coverage/
 *.profraw
 *.profdata
+
+# Dev certificates (generated, not committed)
+dev-certs/

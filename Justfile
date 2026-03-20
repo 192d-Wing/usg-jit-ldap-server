@@ -81,3 +81,15 @@ sbom:
     cargo install cargo-cyclonedx 2>/dev/null || true
     cargo cyclonedx --format json
     @echo "SBOM generated: bom.json"
+
+# Set up local development environment
+dev-setup:
+    bash scripts/dev-setup.sh
+
+# Run smoke test against local server
+smoke-test:
+    bash scripts/smoke-test.sh
+
+# Tear down dev environment
+dev-teardown:
+    docker compose -f docker-compose.dev.yml down -v
