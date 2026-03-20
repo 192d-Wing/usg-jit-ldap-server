@@ -54,17 +54,17 @@ CREATE INDEX idx_groups_group_name ON identity.groups (group_name);
 CREATE INDEX idx_groups_dn         ON identity.groups (dn);
 
 -- ============================================================
--- identity.user_groups
+-- identity.memberships
 -- Many-to-many membership relationship.
 -- ============================================================
-CREATE TABLE identity.user_groups (
+CREATE TABLE identity.memberships (
     user_id  UUID NOT NULL REFERENCES identity.users (id) ON DELETE CASCADE,
     group_id UUID NOT NULL REFERENCES identity.groups (id) ON DELETE CASCADE,
 
     PRIMARY KEY (user_id, group_id)
 );
 
-CREATE INDEX idx_user_groups_group_id ON identity.user_groups (group_id);
+CREATE INDEX idx_memberships_group_id ON identity.memberships (group_id);
 
 -- ============================================================
 -- identity.sites
@@ -86,11 +86,11 @@ CREATE INDEX idx_sites_site_code ON identity.sites (site_code);
 CREATE INDEX idx_sites_region    ON identity.sites (region);
 
 -- ============================================================
--- identity.user_site_policy
+-- identity.site_policies
 -- Per-user, per-site access authorization.
 -- NIST AC-2: account management at the site granularity.
 -- ============================================================
-CREATE TABLE identity.user_site_policy (
+CREATE TABLE identity.site_policies (
     user_id        UUID    NOT NULL REFERENCES identity.users (id) ON DELETE CASCADE,
     site_id        UUID    NOT NULL REFERENCES identity.sites (id) ON DELETE CASCADE,
     access_allowed BOOLEAN NOT NULL DEFAULT TRUE,
@@ -98,7 +98,7 @@ CREATE TABLE identity.user_site_policy (
     PRIMARY KEY (user_id, site_id)
 );
 
-CREATE INDEX idx_user_site_policy_site_id ON identity.user_site_policy (site_id);
+CREATE INDEX idx_site_policies_site_id ON identity.site_policies (site_id);
 
 -- ============================================================
 -- identity.replication_metadata

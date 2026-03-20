@@ -128,7 +128,7 @@ impl<'a> IdentityRepository<'a> {
             r#"
             SELECT g.id, g.group_name, g.dn, g.description, g.created_at, g.updated_at
             FROM identity.groups g
-            INNER JOIN identity.user_groups ug ON ug.group_id = g.id
+            INNER JOIN identity.memberships ug ON ug.group_id = g.id
             WHERE ug.user_id = $1
             ORDER BY g.group_name
             "#,
@@ -217,7 +217,7 @@ impl<'a> IdentityRepository<'a> {
     /// Check whether a user is authorized to access a specific site.
     ///
     /// NIST AC-2: per-site account authorization.
-    /// Returns `true` if a `user_site_policy` row exists with `access_allowed = true`.
+    /// Returns `true` if a `site_policies` row exists with `access_allowed = true`.
     /// Returns `false` if no row exists or access is explicitly denied.
     pub async fn check_site_access(
         &self,
@@ -227,7 +227,7 @@ impl<'a> IdentityRepository<'a> {
         let allowed = sqlx::query_scalar::<_, bool>(
             r#"
             SELECT access_allowed
-            FROM identity.user_site_policy
+            FROM identity.site_policies
             WHERE user_id = $1 AND site_id = $2
             "#,
         )
