@@ -104,6 +104,20 @@ password_ttl_secs = 28800
 # search_rate_window_secs = 60
 
 # ---------------------------------------------------------------------------
+# Admin (health check endpoint)
+# ---------------------------------------------------------------------------
+[admin]
+# Enable the admin HTTP endpoint for health checks and monitoring.
+enabled = true
+
+# Port for the admin HTTP endpoint.
+port = 9090
+
+# Bind address for the admin endpoint. Use 127.0.0.1 to restrict to
+# localhost; use 0.0.0.0 if your monitoring system probes from another host.
+bind_addr = "127.0.0.1"
+
+# ---------------------------------------------------------------------------
 # Audit
 # ---------------------------------------------------------------------------
 [audit]

@@ -22,6 +22,7 @@
 // - SC-23 (Session Authenticity): One session per TLS connection.
 // - AU-2 (Audit Events): Service lifecycle events are logged.
 
+use usg_jit_ldap_server::admin;
 use usg_jit_ldap_server::audit;
 use usg_jit_ldap_server::auth;
 use usg_jit_ldap_server::config;
@@ -181,6 +182,29 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             }
         });
         tracing::info!(retention_days = retention_days, "periodic cleanup task started (hourly)");
+    }
+
+    // Step 5b: Start admin health endpoint if enabled.
+    // NIST SI-4: System monitoring for operational awareness.
+    let start_time = Instant::now();
+    if server_config.admin.enabled {
+        let admin_addr: SocketAddr = format!(
+            "{}:{}",
+            server_config.admin.bind_addr, server_config.admin.port
+        )
+        .parse()
+        .expect("invalid admin bind address");
+        let admin_pool = pg_pool.clone();
+        tokio::spawn(async move {
+            admin::start_admin_server(admin_addr, admin_pool, start_time).await;
+        });
+        tracing::info!(
+            addr = %server_config.admin.bind_addr,
+            port = server_config.admin.port,
+            "admin health endpoint spawned"
+        );
+    } else {
+        tracing::info!("admin health endpoint disabled");
     }
 
     // Step 6: Bind LDAPS listener.

@@ -1,6 +1,7 @@
 // Library entry point for fuzz targets and integration tests.
 // The binary entry point is in main.rs.
 
+pub mod admin;
 pub mod audit;
 pub mod auth;
 pub mod config;

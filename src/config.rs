@@ -54,6 +54,11 @@ pub struct ServerConfig {
     pub replication: ReplicationSettings,
     pub security: SecuritySettings,
     pub audit: AuditSettings,
+
+    /// Admin HTTP endpoint settings (health checks, monitoring).
+    /// NIST SI-4: System monitoring for operational awareness.
+    #[serde(default)]
+    pub admin: AdminSettings,
 }
 
 /// Network listener configuration.
@@ -265,6 +270,47 @@ fn default_audit_enabled() -> bool {
 
 fn default_retention_days() -> u32 {
     30
+}
+
+/// Admin HTTP endpoint settings for health checks and operational monitoring.
+///
+/// NIST SI-4: System monitoring — provides runtime health information
+/// for operational monitoring and alerting systems.
+#[derive(Debug, Deserialize)]
+pub struct AdminSettings {
+    /// Whether the admin HTTP endpoint is enabled. Default: true.
+    #[serde(default = "default_admin_enabled")]
+    pub enabled: bool,
+
+    /// Port for the admin HTTP endpoint. Default: 9090.
+    #[serde(default = "default_admin_port")]
+    pub port: u16,
+
+    /// Bind address for the admin endpoint. Default: "127.0.0.1".
+    #[serde(default = "default_admin_bind_addr")]
+    pub bind_addr: String,
+}
+
+impl Default for AdminSettings {
+    fn default() -> Self {
+        Self {
+            enabled: default_admin_enabled(),
+            port: default_admin_port(),
+            bind_addr: default_admin_bind_addr(),
+        }
+    }
+}
+
+fn default_admin_enabled() -> bool {
+    true
+}
+
+fn default_admin_port() -> u16 {
+    9090
+}
+
+fn default_admin_bind_addr() -> String {
+    "127.0.0.1".to_string()
 }
 
 // ---------------------------------------------------------------------------
