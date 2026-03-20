@@ -138,7 +138,8 @@ impl ReplicationConfig {
 }
 
 impl ReplicationConfig {
-    /// Create a ReplicationConfig from the server configuration settings.
+    /// Create a `ReplicationConfig` from the server configuration settings.
+    #[must_use]
     pub fn from_settings(settings: &crate::config::ReplicationSettings) -> Self {
         Self {
             enabled: settings.enabled,

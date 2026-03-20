@@ -128,6 +128,7 @@ impl AuditLogger {
     /// Return the cumulative number of audit persistence failures.
     ///
     /// Useful for health checks and monitoring/alerting dashboards.
+    #[must_use]
     pub fn failure_count(&self) -> u64 {
         self.failure_count.load(Ordering::Relaxed)
     }

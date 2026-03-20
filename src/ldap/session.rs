@@ -75,26 +75,31 @@ impl LdapSession {
     }
 
     /// Returns the current session state.
+    #[must_use]
     pub fn state(&self) -> &SessionState {
         &self.state
     }
 
     /// Returns the remote peer address.
+    #[must_use]
     pub fn peer_addr(&self) -> SocketAddr {
         self.peer_addr
     }
 
     /// Returns the number of messages processed on this session.
+    #[must_use]
     pub fn message_counter(&self) -> u64 {
         self.message_counter
     }
 
     /// Returns `true` if the session is in the Bound state.
+    #[must_use]
     pub fn is_bound(&self) -> bool {
         matches!(self.state, SessionState::Bound(_))
     }
 
     /// Returns the bind info if the session is bound, or `None`.
+    #[must_use]
     pub fn bind_info(&self) -> Option<&BindInfo> {
         match &self.state {
             SessionState::Bound(info) => Some(info),
@@ -274,7 +279,17 @@ impl LdapSession {
         // Reject anonymous bind (empty DN or empty password).
         let password = match &req.authentication {
             AuthChoice::Simple(pw) => pw,
-            _ => unreachable!(), // SASL already handled above.
+            // SASL already handled above; defensive return for future variants.
+            _ => return vec![LdapMessage {
+                message_id,
+                protocol_op: ProtocolOp::BindResponse(BindResponse {
+                    result: LdapResult {
+                        result_code: ResultCode::AuthMethodNotSupported,
+                        matched_dn: String::new(),
+                        diagnostic_message: "unsupported authentication method".into(),
+                    },
+                }),
+            }],
         };
         if req.name.is_empty() || password.is_empty() {
             // NIST IA-2: Anonymous access is explicitly prohibited.

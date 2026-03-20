@@ -188,21 +188,32 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // NIST SI-4: System monitoring for operational awareness.
     let start_time = Instant::now();
     if server_config.admin.enabled {
-        let admin_addr: SocketAddr = format!(
+        match format!(
             "{}:{}",
             server_config.admin.bind_addr, server_config.admin.port
         )
-        .parse()
-        .expect("invalid admin bind address");
-        let admin_pool = pg_pool.clone();
-        tokio::spawn(async move {
-            admin::start_admin_server(admin_addr, admin_pool, start_time).await;
-        });
-        tracing::info!(
-            addr = %server_config.admin.bind_addr,
-            port = server_config.admin.port,
-            "admin health endpoint spawned"
-        );
+        .parse::<SocketAddr>()
+        {
+            Ok(admin_addr) => {
+                let admin_pool = pg_pool.clone();
+                tokio::spawn(async move {
+                    admin::start_admin_server(admin_addr, admin_pool, start_time).await;
+                });
+                tracing::info!(
+                    addr = %server_config.admin.bind_addr,
+                    port = server_config.admin.port,
+                    "admin health endpoint spawned"
+                );
+            }
+            Err(e) => {
+                tracing::error!(
+                    error = %e,
+                    bind_addr = %server_config.admin.bind_addr,
+                    port = server_config.admin.port,
+                    "invalid admin bind address — skipping admin endpoint"
+                );
+            }
+        }
     } else {
         tracing::info!("admin health endpoint disabled");
     }
@@ -259,17 +270,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 match accept_result {
                     Ok((tcp_stream, peer_addr)) => {
                         // NIST SC-5: Connection limit enforcement.
-                        let permit = match conn_semaphore.clone().try_acquire_owned() {
-                            Ok(permit) => permit,
-                            Err(_) => {
-                                tracing::warn!(
-                                    peer = %peer_addr,
-                                    max = server_config.server.max_connections,
-                                    "connection rejected: max connections reached"
-                                );
-                                drop(tcp_stream);
-                                continue;
-                            }
+                        let Ok(permit) = conn_semaphore.clone().try_acquire_owned() else {
+                            tracing::warn!(
+                                peer = %peer_addr,
+                                max = server_config.server.max_connections,
+                                "connection rejected: max connections reached"
+                            );
+                            drop(tcp_stream);
+                            continue;
                         };
 
                         tracing::debug!(peer = %peer_addr, "accepted TCP connection");
@@ -281,7 +289,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let search_rate_limiter = search_rate_limiter.clone();
                         let audit = audit_logger.clone();
                         let broker_auth = broker_authorizer.clone();
-                        let password_ttl = password_ttl;
                         let idle_timeout = idle_timeout_secs;
 
                         tokio::spawn(async move {

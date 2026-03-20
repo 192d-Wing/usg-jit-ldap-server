@@ -422,7 +422,7 @@ impl SearchBackend for DatabaseSearchBackend {
         Box::pin(async move {
             // NIST SI-10: Per-IP search rate limit check.
             let source_ip = self.peer_addr.ip().to_string();
-            if let Err(_) = self.search_rate_limiter.check_and_increment(&source_ip).await {
+            if self.search_rate_limiter.check_and_increment(&source_ip).await.is_err() {
                 return SearchOutcome {
                     entries: Vec::new(),
                     result_code: ResultCode::Busy,
@@ -783,6 +783,7 @@ impl ConfigBrokerAuthorizer {
     }
 
     /// Return a reference to the authorized DNs list.
+    #[must_use]
     pub fn authorized_dns_ref(&self) -> &[String] {
         &self.authorized_dns
     }

@@ -74,6 +74,7 @@ pub enum ResultCode {
 }
 
 impl ResultCode {
+    #[must_use]
     pub fn from_i64(v: i64) -> Self {
         match v {
             0 => Self::Success,
@@ -1142,6 +1143,7 @@ fn encode_extended_response(resp: &ExtendedResponse) -> Result<Vec<u8>> {
 /// LDAP messages are self-delimiting BER SEQUENCE TLVs. The codec reads the
 /// outer SEQUENCE tag + length to determine message boundaries, then decodes
 /// the full message once enough bytes are available.
+#[must_use]
 pub struct LdapCodec;
 
 impl LdapCodec {

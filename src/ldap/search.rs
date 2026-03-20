@@ -150,8 +150,7 @@ impl<B: SearchBackend> SearchHandler<B> {
 
         let bound_dn = session
             .bind_info()
-            .map(|info| info.dn.as_str())
-            .unwrap_or("");
+            .map_or("", |info| info.dn.as_str());
 
         // Compute effective size limit: the lesser of client and server limits.
         // A client limit of 0 means "no client limit" — use the server limit.

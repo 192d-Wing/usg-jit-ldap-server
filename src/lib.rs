@@ -1,6 +1,8 @@
 // Library entry point for fuzz targets and integration tests.
 // The binary entry point is in main.rs.
 
+#![deny(unsafe_code)]
+
 pub mod admin;
 pub mod audit;
 pub mod auth;
