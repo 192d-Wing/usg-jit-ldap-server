@@ -1,0 +1,11 @@
+target/
+.git/
+dev-certs/
+fuzz/target/
+tests/
+docs/
+*.md
+.github/
+.sqlx/
+.env
+.env.*
