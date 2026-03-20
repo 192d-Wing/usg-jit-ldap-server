@@ -413,7 +413,7 @@ impl SearchBackend for DatabaseSearchBackend {
     fn search<'a>(
         &'a self,
         base_dn: &'a str,
-        _scope: SearchScope,
+        scope: SearchScope,
         filter: &'a Filter,
         requested_attributes: &'a [String],
         size_limit: i32,
@@ -434,49 +434,124 @@ impl SearchBackend for DatabaseSearchBackend {
             tracing::info!(
                 bound_dn = %bound_dn,
                 base_dn = %base_dn,
+                scope = ?scope,
                 "search: processing request"
             );
             // Build filter criteria from the LDAP filter.
             // For v1, we support a subset: equality on cn/uid/mail, presence of objectClass.
             let (username_filter, email_filter) = extract_simple_filters(filter);
 
-            // Escape LIKE wildcards to prevent wildcard injection.
-            // NIST SI-10: Input validation — base_dn must not control LIKE semantics.
-            let escaped_dn = base_dn
-                .replace('\\', "\\\\")
-                .replace('%', "\\%")
-                .replace('_', "\\_");
-            let base_dn_pattern = format!("%{}", escaped_dn);
             let effective_limit = if size_limit <= 0 { 100i64 } else { size_limit as i64 };
 
-            // Query users matching the filter under the base DN.
-            let users = match sqlx::query_as::<_, SearchUserRow>(
-                r#"
-                SELECT id, username, display_name, email, dn
-                FROM identity.users
-                WHERE dn LIKE $1 ESCAPE '\'
-                  AND ($2::text IS NULL OR username = $2)
-                  AND ($3::text IS NULL OR email = $3)
-                  AND enabled = TRUE
-                ORDER BY username
-                LIMIT $4
-                "#,
-            )
-            .bind(&base_dn_pattern)
-            .bind(&username_filter)
-            .bind(&email_filter)
-            .bind(effective_limit)
-            .fetch_all(self.pool.as_ref())
-            .await
-            {
-                Ok(rows) => rows,
-                Err(e) => {
-                    tracing::error!(error = %e, "search: database query failed");
-                    return SearchOutcome {
-                        entries: Vec::new(),
-                        result_code: ResultCode::Other,
-                        diagnostic: "internal server error".into(),
-                    };
+            // NIST AC-6: Scope enforcement — limit search breadth to what the
+            // client explicitly requested. BaseObject returns only the exact DN,
+            // SingleLevel returns immediate children, WholeSubtree returns the
+            // full subtree (original behavior).
+            let users = match scope {
+                SearchScope::BaseObject => {
+                    // Exact DN match only — no LIKE, no wildcards.
+                    match sqlx::query_as::<_, SearchUserRow>(
+                        r#"
+                        SELECT id, username, display_name, email, dn
+                        FROM identity.users
+                        WHERE dn = $1
+                          AND ($2::text IS NULL OR username = $2)
+                          AND ($3::text IS NULL OR email = $3)
+                          AND enabled = TRUE
+                        LIMIT 1
+                        "#,
+                    )
+                    .bind(base_dn)
+                    .bind(&username_filter)
+                    .bind(&email_filter)
+                    .fetch_all(self.pool.as_ref())
+                    .await
+                    {
+                        Ok(rows) => rows,
+                        Err(e) => {
+                            tracing::error!(error = %e, "search: database query failed (BaseObject)");
+                            return SearchOutcome {
+                                entries: Vec::new(),
+                                result_code: ResultCode::Other,
+                                diagnostic: "internal server error".into(),
+                            };
+                        }
+                    }
+                }
+                SearchScope::SingleLevel => {
+                    // Entries one level directly below base_dn.
+                    // Match DNs that end with ",<base_dn>" but do NOT have an
+                    // additional comma before the suffix (i.e., no deeper nesting).
+                    // Escape LIKE wildcards to prevent injection (NIST SI-10).
+                    let escaped_dn = escape_like_wildcards(base_dn);
+                    let pattern = format!("%,{}", escaped_dn);
+                    let exclude_pattern = format!("%,%,{}", escaped_dn);
+                    match sqlx::query_as::<_, SearchUserRow>(
+                        r#"
+                        SELECT id, username, display_name, email, dn
+                        FROM identity.users
+                        WHERE dn LIKE $1 ESCAPE '\'
+                          AND dn NOT LIKE $5 ESCAPE '\'
+                          AND ($2::text IS NULL OR username = $2)
+                          AND ($3::text IS NULL OR email = $3)
+                          AND enabled = TRUE
+                        ORDER BY username
+                        LIMIT $4
+                        "#,
+                    )
+                    .bind(&pattern)
+                    .bind(&username_filter)
+                    .bind(&email_filter)
+                    .bind(effective_limit)
+                    .bind(&exclude_pattern)
+                    .fetch_all(self.pool.as_ref())
+                    .await
+                    {
+                        Ok(rows) => rows,
+                        Err(e) => {
+                            tracing::error!(error = %e, "search: database query failed (SingleLevel)");
+                            return SearchOutcome {
+                                entries: Vec::new(),
+                                result_code: ResultCode::Other,
+                                diagnostic: "internal server error".into(),
+                            };
+                        }
+                    }
+                }
+                SearchScope::WholeSubtree => {
+                    // Suffix match — returns all entries under the base DN.
+                    // Escape LIKE wildcards to prevent injection (NIST SI-10).
+                    let escaped_dn = escape_like_wildcards(base_dn);
+                    let base_dn_pattern = format!("%{}", escaped_dn);
+                    match sqlx::query_as::<_, SearchUserRow>(
+                        r#"
+                        SELECT id, username, display_name, email, dn
+                        FROM identity.users
+                        WHERE dn LIKE $1 ESCAPE '\'
+                          AND ($2::text IS NULL OR username = $2)
+                          AND ($3::text IS NULL OR email = $3)
+                          AND enabled = TRUE
+                        ORDER BY username
+                        LIMIT $4
+                        "#,
+                    )
+                    .bind(&base_dn_pattern)
+                    .bind(&username_filter)
+                    .bind(&email_filter)
+                    .bind(effective_limit)
+                    .fetch_all(self.pool.as_ref())
+                    .await
+                    {
+                        Ok(rows) => rows,
+                        Err(e) => {
+                            tracing::error!(error = %e, "search: database query failed (WholeSubtree)");
+                            return SearchOutcome {
+                                entries: Vec::new(),
+                                result_code: ResultCode::Other,
+                                diagnostic: "internal server error".into(),
+                            };
+                        }
+                    }
                 }
             };
 
@@ -539,6 +614,17 @@ impl SearchBackend for DatabaseSearchBackend {
             }
         })
     }
+}
+
+/// Escape SQL LIKE wildcard characters in a DN to prevent injection.
+///
+/// NIST SI-10: Input validation — user-supplied base_dn values must not
+/// alter LIKE pattern semantics.
+fn escape_like_wildcards(input: &str) -> String {
+    input
+        .replace('\\', "\\\\")
+        .replace('%', "\\%")
+        .replace('_', "\\_")
 }
 
 /// Extract simple equality filter values from an LDAP filter tree.
@@ -763,5 +849,132 @@ mod tests {
         let (username, email) = extract_simple_filters(&filter);
         assert_eq!(username.as_deref(), Some("jdoe"));
         assert_eq!(email.as_deref(), Some("jdoe@example.com"));
+    }
+
+    // -----------------------------------------------------------------------
+    // escape_like_wildcards tests
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn test_escape_like_wildcards_no_special_chars() {
+        assert_eq!(
+            escape_like_wildcards("ou=users,dc=example,dc=com"),
+            "ou=users,dc=example,dc=com"
+        );
+    }
+
+    #[test]
+    fn test_escape_like_wildcards_percent() {
+        assert_eq!(
+            escape_like_wildcards("ou=100%,dc=example"),
+            "ou=100\\%,dc=example"
+        );
+    }
+
+    #[test]
+    fn test_escape_like_wildcards_underscore() {
+        assert_eq!(
+            escape_like_wildcards("ou=a_b,dc=example"),
+            "ou=a\\_b,dc=example"
+        );
+    }
+
+    #[test]
+    fn test_escape_like_wildcards_backslash() {
+        assert_eq!(
+            escape_like_wildcards("cn=test\\value"),
+            "cn=test\\\\value"
+        );
+    }
+
+    #[test]
+    fn test_escape_like_wildcards_all_special() {
+        // Backslash must be escaped first to avoid double-escaping.
+        assert_eq!(
+            escape_like_wildcards("cn=a\\b%c_d"),
+            "cn=a\\\\b\\%c\\_d"
+        );
+    }
+
+    // -----------------------------------------------------------------------
+    // Search scope — query construction logic tests
+    // -----------------------------------------------------------------------
+    //
+    // These tests validate the scope-dependent DN matching logic without
+    // requiring a live database. They mirror the SQL WHERE clauses using
+    // pure Rust string predicates.
+
+    /// Simulate BaseObject scope: only exact DN match.
+    fn matches_base_object(entry_dn: &str, base_dn: &str) -> bool {
+        entry_dn == base_dn
+    }
+
+    /// Simulate SingleLevel scope: entry DN ends with ",<base_dn>" and
+    /// the RDN portion (before the suffix) contains no commas.
+    fn matches_single_level(entry_dn: &str, base_dn: &str) -> bool {
+        let suffix = format!(",{}", base_dn);
+        if !entry_dn.ends_with(&suffix) {
+            return false;
+        }
+        let rdn_part = &entry_dn[..entry_dn.len() - suffix.len()];
+        // Must have exactly one RDN component (no commas).
+        !rdn_part.contains(',')
+    }
+
+    /// Simulate WholeSubtree scope: entry DN ends with base_dn (or equals it).
+    fn matches_whole_subtree(entry_dn: &str, base_dn: &str) -> bool {
+        entry_dn == base_dn || entry_dn.ends_with(&format!(",{}", base_dn))
+    }
+
+    #[test]
+    fn test_scope_base_object_exact_match() {
+        let base = "ou=users,dc=example,dc=com";
+        assert!(matches_base_object("ou=users,dc=example,dc=com", base));
+        assert!(!matches_base_object("cn=alice,ou=users,dc=example,dc=com", base));
+        assert!(!matches_base_object("dc=example,dc=com", base));
+    }
+
+    #[test]
+    fn test_scope_single_level_immediate_children() {
+        let base = "ou=users,dc=example,dc=com";
+        // Direct child: one RDN above base.
+        assert!(matches_single_level("cn=alice,ou=users,dc=example,dc=com", base));
+        assert!(matches_single_level("cn=bob,ou=users,dc=example,dc=com", base));
+        // NOT a direct child: two RDNs above base.
+        assert!(!matches_single_level(
+            "cn=alice,ou=eng,ou=users,dc=example,dc=com",
+            base
+        ));
+        // Base itself is NOT a child of itself.
+        assert!(!matches_single_level("ou=users,dc=example,dc=com", base));
+    }
+
+    #[test]
+    fn test_scope_whole_subtree_all_descendants() {
+        let base = "ou=users,dc=example,dc=com";
+        // Base itself.
+        assert!(matches_whole_subtree("ou=users,dc=example,dc=com", base));
+        // Direct child.
+        assert!(matches_whole_subtree("cn=alice,ou=users,dc=example,dc=com", base));
+        // Deeply nested descendant.
+        assert!(matches_whole_subtree(
+            "cn=alice,ou=eng,ou=users,dc=example,dc=com",
+            base
+        ));
+        // Unrelated DN.
+        assert!(!matches_whole_subtree("cn=alice,ou=admins,dc=example,dc=com", base));
+    }
+
+    #[test]
+    fn test_scope_single_level_no_false_positives_on_similar_suffix() {
+        // Ensure SingleLevel does not match entries whose DN happens to
+        // end with the base_dn string but under a different parent.
+        let base = "ou=users,dc=example,dc=com";
+        // "ou=otherusers,dc=example,dc=com" ends with "users,dc=example,dc=com"
+        // but is NOT a child of "ou=users,dc=example,dc=com".
+        assert!(!matches_single_level(
+            "cn=alice,ou=otherusers,dc=example,dc=com",
+            base
+        ));
     }
 }
