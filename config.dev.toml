@@ -1,0 +1,27 @@
+[server]
+bind_addr = "0.0.0.0"
+port = 636
+allow_non_standard_port = false
+max_connections = 100
+idle_timeout_secs = 300
+
+[tls]
+cert_path = "dev-certs/server.crt"
+key_path = "dev-certs/server.key"
+min_version = "1.3"
+
+[database]
+url = "postgresql://ldap_dev:ldap_dev_password@localhost:5432/ldap_dev"
+max_connections = 5
+
+[replication]
+enabled = false
+
+[security]
+max_bind_attempts = 5
+rate_limit_window_secs = 300
+password_ttl_secs = 28800
+broker_dns = ["cn=jit-broker,ou=services,dc=example,dc=com"]
+
+[audit]
+enabled = true
