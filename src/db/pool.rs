@@ -74,6 +74,7 @@ impl DbPool {
     }
 
     /// Borrow the underlying `PgPool` for direct query execution.
+    #[must_use]
     pub fn inner(&self) -> &PgPool {
         &self.pool
     }

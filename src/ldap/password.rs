@@ -169,6 +169,7 @@ pub trait PasswordStore: Send + Sync {
 pub trait BrokerAuthorizer: Send + Sync {
     /// Returns `true` if the given DN is authorized to perform password
     /// modifications on behalf of users.
+    #[must_use]
     fn is_authorized_broker(&self, dn: &str) -> bool;
 }
 
@@ -227,14 +228,16 @@ impl<S: PasswordStore, A: BrokerAuthorizer> PasswordModifyHandler<S, A> {
     ) -> (ExtendedResponse, Option<PasswordModifyAuditInfo>) {
         // Verify the OID matches.
         if req.request_name != PASSWORD_MODIFY_OID {
+            tracing::warn!(
+                expected_oid = PASSWORD_MODIFY_OID,
+                received_oid = %req.request_name,
+                "password modify: OID mismatch"
+            );
             return (ExtendedResponse {
                 result: LdapResult {
                     result_code: ResultCode::ProtocolError,
                     matched_dn: String::new(),
-                    diagnostic_message: format!(
-                        "expected OID {}, got {}",
-                        PASSWORD_MODIFY_OID, req.request_name
-                    ),
+                    diagnostic_message: "unexpected OID for password modify".into(),
                 },
                 response_name: None,
                 response_value: None,
@@ -317,7 +320,8 @@ impl<S: PasswordStore, A: BrokerAuthorizer> PasswordModifyHandler<S, A> {
                     result: LdapResult {
                         result_code: ResultCode::ProtocolError,
                         matched_dn: String::new(),
-                        diagnostic_message: format!("malformed request: {e}"),
+                        // Do not leak internal codec details to the client.
+                        diagnostic_message: "malformed PasswdModifyRequestValue".into(),
                     },
                     response_name: None,
                     response_value: None,
@@ -325,6 +329,7 @@ impl<S: PasswordStore, A: BrokerAuthorizer> PasswordModifyHandler<S, A> {
                     broker_dn: bind_info.dn.clone(),
                     target_dn: String::new(),
                     success: false,
+                    // Detailed error kept in audit logs only.
                     failure_reason: Some(format!("malformed request: {e}")),
                 }));
             }

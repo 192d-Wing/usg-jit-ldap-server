@@ -189,10 +189,8 @@ where
                             result: LdapResult {
                                 result_code: ResultCode::UnwillingToPerform,
                                 matched_dn: String::new(),
-                                diagnostic_message: format!(
-                                    "unsupported extended operation: {}",
-                                    req.request_name
-                                ),
+                                // Do not echo the OID back to the client.
+                                diagnostic_message: "unsupported extended operation".into(),
                             },
                             response_name: None,
                             response_value: None,

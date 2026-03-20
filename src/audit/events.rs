@@ -235,6 +235,7 @@ impl AuditEvent {
     }
 
     /// Return the event type string for database storage.
+    #[must_use]
     pub fn event_type_name(&self) -> &'static str {
         match self {
             Self::BindAttempt { .. } => "bind_attempt",

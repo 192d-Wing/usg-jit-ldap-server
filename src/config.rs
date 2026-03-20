@@ -323,6 +323,7 @@ fn default_admin_bind_addr() -> String {
 /// 1. First CLI argument (if present)
 /// 2. LDAP_CONFIG_PATH environment variable
 /// 3. Default: "config.toml"
+#[must_use]
 pub fn resolve_config_path() -> String {
     // Check CLI args (skip program name).
     let args: Vec<String> = std::env::args().collect();
