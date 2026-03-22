@@ -1,7 +1,7 @@
 target/
 .git/
 dev-certs/
-fuzz/target/
+fuzz/
 tests/
 docs/
 *.md

@@ -1,0 +1,71 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ldap_test
+      POSTGRES_USER: ldap_test
+      POSTGRES_PASSWORD: ldap_test_password
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ldap_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+    volumes:
+      - pgdata_e2e:/var/lib/postgresql/data
+    networks:
+      - ldapnet
+
+  # The LDAP server runs migrations on startup via sqlx::migrate!()
+  ldap-server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./tests/e2e/certs:/etc/ldap-server/certs:ro
+      - ./tests/e2e/config.e2e.toml:/etc/ldap-server/config.toml:ro
+    networks:
+      - ldapnet
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:9090/healthz"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  # Seeds test data after server has run migrations, then runs tests
+  ldap-client:
+    image: debian:bookworm-slim
+    depends_on:
+      ldap-server:
+        condition: service_healthy
+    volumes:
+      - ./tests/e2e:/e2e:ro
+      - ./scripts:/scripts:ro
+    environment:
+      PGHOST: postgres
+      PGUSER: ldap_test
+      PGPASSWORD: ldap_test_password
+      PGDATABASE: ldap_test
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        apt-get update -qq && apt-get install -y -qq ldap-utils openssl curl postgresql-client > /dev/null 2>&1
+
+        echo "=== Seeding test data ==="
+        psql -f /scripts/seed-data.sql
+        psql -f /e2e/insert-test-password.sql
+        echo "=== Seed complete ==="
+
+        echo ""
+        sh /e2e/run-e2e-tests.sh
+    networks:
+      - ldapnet
+
+volumes:
+  pgdata_e2e:
+
+networks:
+  ldapnet:

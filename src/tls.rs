@@ -195,6 +195,10 @@ fn build_server_config(
         )));
     }
 
+    // Install the ring crypto provider. Required by rustls 0.23+.
+    // This is idempotent — if already installed, it's a no-op.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+
     let config = ServerConfig::builder_with_protocol_versions(&[&rustls::version::TLS13])
         .with_no_client_auth()
         .with_single_cert(certs, key)?;
