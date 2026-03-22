@@ -1,0 +1,13 @@
+# cargo-audit configuration
+# https://docs.rs/cargo-audit/latest/cargo_audit/config/
+
+[advisories]
+# RUSTSEC-2023-0071: rsa timing side-channel (Marvin Attack)
+# This is pulled in transitively via sqlx-mysql, which is compiled by sqlx 0.8
+# even when only the "postgres" feature is enabled. We do not use MySQL at all.
+# The rsa crate is never called in our code paths — this is a false positive.
+ignore = ["RUSTSEC-2023-0071"]
+
+# rustls-pemfile is flagged as unmaintained but has no known vulnerabilities.
+# Tracked for migration to rustls-pki-types pem feature in a future release.
+informational_warnings = ["unmaintained"]
