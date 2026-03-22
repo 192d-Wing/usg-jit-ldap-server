@@ -80,6 +80,14 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Generate test TLS certificates
+        run: |
+          mkdir -p tests/e2e/certs
+          openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+            -keyout tests/e2e/certs/server.key -out tests/e2e/certs/server.crt \
+            -days 1 -nodes \
+            -subj "/CN=ldap-server/O=USG JIT LDAP Test/C=US" \
+            -addext "subjectAltName=DNS:ldap-server,IP:127.0.0.1" 2>/dev/null
       - name: Run e2e test stack
         run: |
           docker compose -f docker-compose.e2e.yml up \
@@ -124,11 +132,12 @@ jobs:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo install cargo-cyclonedx
-      - run: cargo cyclonedx --format json
+      - run: cargo cyclonedx --format json --output-cdx
       - uses: actions/upload-artifact@v7
         with:
           name: sbom
-          path: bom.json
+          path: "*.cdx.json"
+          if-no-files-found: warn
 
   # ---------------------------------------------------------------
   # Build release binary (only after all checks pass)
