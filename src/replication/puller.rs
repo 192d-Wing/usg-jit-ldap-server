@@ -594,7 +594,7 @@ impl ReplicationPuller {
                         .payload
                         .get("group_id")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s))
+                        .map(Uuid::parse_str)
                         .transpose()
                         .map_err(|e| format!("membership_add: invalid group_id UUID: {e}"))?
                         .ok_or("membership_add: missing group_id")?;
@@ -609,7 +609,7 @@ impl ReplicationPuller {
                         .payload
                         .get("group_id")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s))
+                        .map(Uuid::parse_str)
                         .transpose()
                         .map_err(|e| format!("membership_remove: invalid group_id UUID: {e}"))?
                         .ok_or("membership_remove: missing group_id")?;
@@ -624,7 +624,7 @@ impl ReplicationPuller {
                         .payload
                         .get("site_id")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s))
+                        .map(Uuid::parse_str)
                         .transpose()
                         .map_err(|e| format!("site_policy_grant: invalid site_id UUID: {e}"))?
                         .ok_or("site_policy_grant: missing site_id")?;
@@ -639,7 +639,7 @@ impl ReplicationPuller {
                         .payload
                         .get("site_id")
                         .and_then(|v| v.as_str())
-                        .map(|s| Uuid::parse_str(s))
+                        .map(Uuid::parse_str)
                         .transpose()
                         .map_err(|e| format!("site_policy_revoke: invalid site_id UUID: {e}"))?
                         .ok_or("site_policy_revoke: missing site_id")?;

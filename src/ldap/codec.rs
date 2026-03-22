@@ -523,7 +523,7 @@ pub fn decode_boolean(bytes: &[u8]) -> Result<(bool, usize)> {
 pub fn decode_ldap_string(bytes: &[u8]) -> Result<(String, usize)> {
     let (raw, consumed) = decode_octet_string(bytes)?;
     // Reject embedded NULL bytes which can cause DN/filter comparison bypasses.
-    if raw.iter().any(|&b| b == 0) {
+    if raw.contains(&0) {
         return Err(CodecError::InvalidFormat(
             "embedded NULL byte in LDAP string".into(),
         ));

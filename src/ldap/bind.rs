@@ -156,15 +156,15 @@ impl<A: Authenticator> BindHandler<A> {
             AuthResult::Success => {
                 // NIST IA-2: Successful identification and authentication.
                 // Log re-bind identity changes for audit trail.
-                if let Some(old_info) = session.bind_info() {
-                    if old_info.dn != req.name {
-                        tracing::warn!(
-                            peer = %session.peer_addr(),
-                            old_dn = %old_info.dn,
-                            new_dn = %req.name,
-                            "session re-bound to different identity"
-                        );
-                    }
+                if let Some(old_info) = session.bind_info()
+                    && old_info.dn != req.name
+                {
+                    tracing::warn!(
+                        peer = %session.peer_addr(),
+                        old_dn = %old_info.dn,
+                        new_dn = %req.name,
+                        "session re-bound to different identity"
+                    );
                 }
                 tracing::info!(
                     peer = %session.peer_addr(),
