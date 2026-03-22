@@ -123,11 +123,9 @@ impl ReplicationConfig {
             .filter_map(|param| param.split_once('='))
             .any(|(key, value)| key == "sslmode" && value == "verify-full");
         if !has_valid_sslmode {
-            return Err(
-                "central_url must use sslmode=verify-full \
+            return Err("central_url must use sslmode=verify-full \
                  (NIST SC-8: transmission confidentiality and hostname verification)"
-                    .into(),
-            );
+                .into());
         }
         if self.batch_size < 1 || self.batch_size > 100_000 {
             return Err("batch_size must be between 1 and 100,000".into());

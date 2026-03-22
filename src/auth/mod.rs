@@ -108,7 +108,11 @@ impl Authenticator for DatabaseAuthenticator {
             // Prevents distributed brute-force attacks from a single source IP
             // that rotate through many different DNs.
             let source_ip = self.peer_addr.ip().to_string();
-            if let Err(_e) = self.bind_ip_rate_limiter.check_and_increment(&source_ip).await {
+            if let Err(_e) = self
+                .bind_ip_rate_limiter
+                .check_and_increment(&source_ip)
+                .await
+            {
                 let event = AuditEvent::bind_attempt(self.peer_addr, dn, BindOutcome::RateLimited);
                 self.audit.log(event).await;
                 return AuthResult::AccountLocked;

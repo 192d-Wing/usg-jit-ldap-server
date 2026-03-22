@@ -412,8 +412,13 @@ async fn handle_connection(
     // Build per-connection concrete implementations of the protocol traits.
     // NIST IA-2: The authenticator is the identification and authentication
     // enforcement point for this connection.
-    let authenticator =
-        DatabaseAuthenticator::new(pool.clone(), rate_limiter, bind_ip_rate_limiter, audit.clone(), peer_addr);
+    let authenticator = DatabaseAuthenticator::new(
+        pool.clone(),
+        rate_limiter,
+        bind_ip_rate_limiter,
+        audit.clone(),
+        peer_addr,
+    );
     let search_backend = DatabaseSearchBackend::new(pool.clone(), search_rate_limiter, peer_addr);
     let password_store = DatabasePasswordStore::new(pool.clone(), password_ttl);
 

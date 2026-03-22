@@ -395,7 +395,15 @@ impl ReplicationPuller {
         let entries = rows
             .into_iter()
             .map(
-                |(seq_number, change_type, entity_id, payload, payload_hash, protocol_version, created_at)| ReplicationLogEntry {
+                |(
+                    seq_number,
+                    change_type,
+                    entity_id,
+                    payload,
+                    payload_hash,
+                    protocol_version,
+                    created_at,
+                )| ReplicationLogEntry {
                     seq_number,
                     change_type,
                     entity_id,

@@ -459,9 +459,7 @@ fn validate(config: &ServerConfig) -> Result<(), ConfigError> {
             .filter_map(|param| param.split_once('='))
             .any(|(key, value)| {
                 key == "sslmode"
-                    && (value == "require"
-                        || value == "verify-ca"
-                        || value == "verify-full")
+                    && (value == "require" || value == "verify-ca" || value == "verify-full")
             });
         if !has_tls {
             return Err(ConfigError::Validation(
@@ -614,8 +612,10 @@ enabled = true
 
     #[test]
     fn test_empty_database_url_rejected() {
-        let toml_str = minimal_config_toml()
-            .replace("url = \"postgresql://localhost/test?sslmode=require\"", "url = \"\"");
+        let toml_str = minimal_config_toml().replace(
+            "url = \"postgresql://localhost/test?sslmode=require\"",
+            "url = \"\"",
+        );
         let config: ServerConfig = toml::from_str(&toml_str).unwrap();
         let result = validate(&config);
         assert!(result.is_err());

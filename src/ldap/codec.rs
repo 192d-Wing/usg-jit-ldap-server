@@ -557,9 +557,10 @@ impl<'a> TlvIter<'a> {
 
     fn next_tlv(&mut self) -> Result<(u8, &'a [u8])> {
         let (tag, value, consumed) = decode_tlv(self.remaining())?;
-        self.offset = self.offset.checked_add(consumed).ok_or_else(|| {
-            CodecError::InvalidFormat("TLV iterator offset overflow".into())
-        })?;
+        self.offset = self
+            .offset
+            .checked_add(consumed)
+            .ok_or_else(|| CodecError::InvalidFormat("TLV iterator offset overflow".into()))?;
         Ok((tag, value))
     }
 }
