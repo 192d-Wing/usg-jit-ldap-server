@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: TBD
+// SPDX-License-Identifier: Apache-2.0
 //
 // LDAPv3 BER Codec — Manual tag-length-value encoding/decoding.
 //

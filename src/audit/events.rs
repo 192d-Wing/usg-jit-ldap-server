@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: TBD
+// SPDX-License-Identifier: Apache-2.0
 //
 // Audit Event Definitions
 //
