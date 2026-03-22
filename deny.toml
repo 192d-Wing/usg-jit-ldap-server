@@ -1,11 +1,9 @@
 [advisories]
-vulnerability = "deny"
-unmaintained = "warn"
-yanked = "warn"
-notice = "warn"
+
+unmaintained = "all"
+yanked = "deny"
 
 [licenses]
-unlicensed = "deny"
 allow = [
     "MIT",
     "Apache-2.0",
@@ -15,6 +13,8 @@ allow = [
     "Unicode-3.0",
     "Unicode-DFS-2016",
     "OpenSSL",
+    "CDLA-Permissive-2.0",
+    "Zlib",
 ]
 confidence-threshold = 0.8
 
