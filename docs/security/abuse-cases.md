@@ -330,7 +330,7 @@ The window is bounded but nonzero.
 **Attack Vector:** An adversary attempts to force the connection to use weaker
 TLS parameters or to bypass TLS entirely. Attack variants include:
 - TLS stripping via StartTLS interception
-- Protocol downgrade to TLS 1.0/1.1
+- Protocol downgrade to TLS 1.0/1.1/1.2
 - Cipher suite downgrade to non-AEAD ciphers
 - Connection to a non-existent plaintext port
 
@@ -347,7 +347,7 @@ accepts weak TLS versions.
 |---|---|---|---|
 | 1 | No plaintext listener | Port 389 is never opened; no configuration option for it | `src/main.rs` |
 | 2 | No StartTLS | Extended operation handler does not recognize StartTLS OID | `src/ldap/password.rs` |
-| 3 | TLS 1.2+ minimum | Only TLS 1.2 and 1.3 accepted; 1.0/1.1 not available | `src/tls.rs` — `build_server_config()` |
+| 3 | TLS 1.3 only | Only TLS 1.3 accepted; 1.0/1.1/1.2 not available | `src/tls.rs` — `build_server_config()` |
 | 4 | AEAD-only ciphers | rustls default provider restricts to strong cipher suites | `src/tls.rs` — rustls defaults |
 | 5 | Fail-closed | Server will not start without valid TLS material | `src/main.rs` — startup sequence |
 | 6 | Config validation | Port must be 636 unless explicitly overridden for testing | `src/config.rs` — `validate()` |

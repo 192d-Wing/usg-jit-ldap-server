@@ -29,8 +29,8 @@ phases depend on. Every line of code in this phase is security-relevant.
 - [ ] **SM-1.2:** No code path exists that accepts a plaintext TCP connection for
   LDAP processing. Verified by code review: all LDAP handling occurs after
   `tls_acceptor.accept()`.
-- [ ] **SM-1.3:** TLS minimum version is 1.2. Verified by test: attempt connection
-  with TLS 1.0/1.1, confirm rejection.
+- [ ] **SM-1.3:** TLS minimum version is 1.3. Verified by test: attempt connection
+  with TLS 1.0/1.1/1.2, confirm rejection.
 - [ ] **SM-1.4:** Configuration validator rejects port != 636 without explicit
   override. Verified by unit test.
 - [ ] **SM-1.5:** Database connection uses a least-privilege role. Verified by

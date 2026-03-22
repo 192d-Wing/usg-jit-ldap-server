@@ -346,7 +346,7 @@ A TLS handshake or connection error occurred.
   "details": {
     "timestamp": "2026-03-19T14:33:00.000Z",
     "source_addr": "192.168.1.50:55555",
-    "error_detail": "client offered TLS 1.0, minimum is 1.2"
+    "error_detail": "client offered TLS 1.0, minimum is 1.3"
   }
 }
 ```
@@ -379,7 +379,7 @@ The LDAPS service started successfully.
     "timestamp": "2026-03-19T14:00:01.000Z",
     "bind_addr": "0.0.0.0",
     "port": 636,
-    "tls_min_version": "1.2"
+    "tls_min_version": "1.3"
   }
 }
 ```

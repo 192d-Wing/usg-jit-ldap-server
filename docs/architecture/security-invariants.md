@@ -16,8 +16,7 @@ security defect.
   occurs. Raw TCP connections that fail TLS negotiation are dropped.
 - There is no StartTLS implementation. The `ExtendedRequest` handler does not
   recognize the StartTLS OID.
-- TLS version minimum is 1.2. TLS 1.3 is preferred. TLS 1.0 and 1.1 are
-  not supported.
+- TLS version minimum is 1.3. TLS 1.0, 1.1, and 1.2 are not supported.
 
 **Verification:** Attempting to connect on port 636 without TLS produces a
 connection reset. There is no port 389 listener. Code review confirms no

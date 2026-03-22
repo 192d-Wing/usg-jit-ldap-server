@@ -59,7 +59,7 @@ LDAP Server's implementation. It serves two audiences:
 
 | Control | Title | Module | Implementation Note |
 |---|---|---|---|
-| SC-8 | Transmission Confidentiality and Integrity | `src/tls.rs` | All LDAP communication is encrypted via TLS 1.2+ with AEAD cipher suites. No plaintext code path. Replication uses mTLS. |
+| SC-8 | Transmission Confidentiality and Integrity | `src/tls.rs` | All LDAP communication is encrypted via TLS 1.3 with AEAD cipher suites. No plaintext code path. Replication uses mTLS. |
 | SC-8(1) | Cryptographic Protection | `src/tls.rs` | TLS with AES-256-GCM or ChaCha20-Poly1305. Certificate-based server authentication. |
 | SC-12 | Cryptographic Key Establishment | `src/tls.rs`, `src/replication/puller.rs` | TLS key exchange via ECDHE. Certificates issued by project PKI. Replication uses mutual certificate authentication. |
 | SC-13 | Cryptographic Protection | `src/tls.rs`, `src/auth/password.rs` | TLS for transport. Argon2id for password hashing. SHA-256 for replication integrity. AEAD ciphers for TLS sessions. |

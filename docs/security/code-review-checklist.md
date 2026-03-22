@@ -14,8 +14,8 @@ must be resolved before merge.
   any other listener for LDAP traffic.
 - [ ] [CRITICAL] The `build_tls_acceptor()` function fails with an error (not a
   warning) if certificate loading fails. The caller (main) must exit on error.
-- [ ] Minimum TLS version is 1.2. The `build_server_config()` function does not
-  accept "1.0" or "1.1" as valid `min_version` values.
+- [ ] Minimum TLS version is 1.3. The `build_server_config()` function does not
+  accept "1.0", "1.1", or "1.2" as valid `min_version` values.
 - [ ] Cipher suite selection uses rustls defaults (AEAD-only). No custom cipher
   suite configuration that could weaken the selection.
 - [ ] Certificate metadata is logged (chain position, size). Private key material

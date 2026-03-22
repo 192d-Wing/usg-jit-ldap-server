@@ -36,11 +36,11 @@ There is no code path that accepts plaintext LDAP connections. The server listen
 exclusively on port 636 (LDAPS). Port 389 is never opened. StartTLS is not
 implemented — the `ExtendedRequest` handler does not recognize the StartTLS OID.
 
-Only TLS 1.2 and 1.3 are accepted. Cipher suites are restricted to AEAD algorithms
+Only TLS 1.3 is accepted. Cipher suites are restricted to AEAD algorithms
 (AES-256-GCM, ChaCha20-Poly1305) via the rustls default provider.
 
 **Enforcement:** `src/tls.rs` — `build_server_config()` constructs a rustls
-`ServerConfig` with `builder_with_protocol_versions(&[TLS12, TLS13])`.
+`ServerConfig` with `builder_with_protocol_versions(&[TLS13])`.
 
 ### 3. Password Material Zeroization
 
@@ -117,7 +117,7 @@ The system implements defense at multiple layers, so that failure of any single
 control does not compromise the overall security posture.
 
 ### Layer 1: Network Transport (TLS)
-- LDAPS-only, TLS 1.2+ with AEAD ciphers
+- LDAPS-only, TLS 1.3 with AEAD ciphers
 - No plaintext code path, no StartTLS
 - Fail-closed on certificate unavailability
 - Mutual TLS on replication channel

@@ -53,7 +53,7 @@ trust levels, authentication requirements, and access controls.
 | **Source** | LDAP client (PAM, application, SSH, etc.) |
 | **Destination** | LDAPS listener on port 636 |
 | **Trust Level** | Untrusted |
-| **Transport** | TLS 1.2+ (TLS 1.3 preferred) |
+| **Transport** | TLS 1.3 only |
 | **Authentication** | None at this boundary; TLS handshake only |
 | **Authorization** | None; any network peer may attempt a connection |
 

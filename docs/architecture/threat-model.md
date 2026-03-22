@@ -31,7 +31,7 @@ design decisions.
 | T-L1 | **Spoofing** | Attacker impersonates the LDAP server with a rogue certificate | Server certificate is pinned or CA-validated by clients. Certificate rotation uses the project PKI. |
 | T-L2 | **Tampering** | Attacker modifies data in transit | TLS with AEAD ciphers (AES-256-GCM, ChaCha20-Poly1305) provides integrity. |
 | T-L3 | **Repudiation** | Client denies having connected | TLS session is logged with client IP, connection time, and TLS parameters in audit log. |
-| T-L4 | **Information Disclosure** | TLS downgrade exposes credentials | Only TLS 1.2+ is accepted. No StartTLS. No plaintext port. Cipher suite is restricted. |
+| T-L4 | **Information Disclosure** | TLS downgrade exposes credentials | Only TLS 1.3 is accepted. No StartTLS. No plaintext port. Cipher suite is restricted. |
 | T-L5 | **Denial of Service** | TLS handshake flood exhausts resources | Connection rate limiting at listener. Maximum concurrent connection cap. TLS handshake timeout. |
 | T-L6 | **Elevation of Privilege** | Exploit in TLS library grants code execution | Rust memory safety. Minimal dependency set. TLS library (rustls) is a pure-Rust, audited implementation. |
 

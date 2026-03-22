@@ -138,7 +138,7 @@ Shared test utilities in `tests/common/mod.rs` provide:
 | Script | Attack Category | What It Tests |
 |--------|----------------|---------------|
 | `malformed_ber.py` | Protocol Fuzzing | Sends malformed BER/ASN.1 payloads: oversized length fields, truncated messages, invalid tag bytes. Server must reject every payload without crashing. |
-| `tls_downgrade.py` | Transport Security | Attempts TLS 1.0 and 1.1 connections; verifies rejection. Confirms TLS 1.3 connectivity. Validates SC-13 enforcement from an external perspective. |
+| `tls_downgrade.py` | Transport Security | Attempts TLS 1.0, 1.1, and 1.2 connections; verifies rejection. Confirms TLS 1.3 connectivity. Validates SC-13 enforcement from an external perspective. |
 | `connection_flood.py` | Denial of Service | Opens 200 simultaneous TLS connections to verify `max_connections` limit enforcement. Validates SC-5 from an external perspective. |
 | `brute_force.py` | Authentication | Fires rapid Bind attempts to trigger rate limiting. Validates AC-7 enforcement from an external perspective. |
 

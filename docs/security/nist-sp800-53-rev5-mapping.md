@@ -294,7 +294,7 @@ assessor can search for), and the implementation status.
 |---|---|
 | **Control** | SC-8 |
 | **Title** | Transmission Confidentiality and Integrity |
-| **Implementation** | All LDAP communication is encrypted via TLS 1.2+ with AEAD cipher suites (AES-256-GCM or ChaCha20-Poly1305). The TLS layer provides both confidentiality (encryption) and integrity (AEAD authentication tag). There is no plaintext code path — the `TcpListener` is wrapped in a `TlsAcceptor` before any LDAP processing occurs. Connections that fail TLS negotiation are dropped immediately. The replication channel uses mutual TLS for the same guarantees. |
+| **Implementation** | All LDAP communication is encrypted via TLS 1.3 with AEAD cipher suites (AES-256-GCM or ChaCha20-Poly1305). The TLS layer provides both confidentiality (encryption) and integrity (AEAD authentication tag). There is no plaintext code path — the `TcpListener` is wrapped in a `TlsAcceptor` before any LDAP processing occurs. Connections that fail TLS negotiation are dropped immediately. The replication channel uses mutual TLS for the same guarantees. |
 | **Module/File** | `src/tls.rs` |
 | **Code Evidence** | `NIST SP 800-53: SC-8 — All client connections are accepted only via TLS` |
 | **Status** | **Implemented** |
@@ -316,9 +316,9 @@ assessor can search for), and the implementation status.
 |---|---|
 | **Control** | SC-13 |
 | **Title** | Cryptographic Protection |
-| **Implementation** | The system uses the following cryptographic mechanisms: (1) TLS 1.2/1.3 with AES-256-GCM or ChaCha20-Poly1305 for transport encryption (via rustls with the ring provider). (2) Argon2id for password hashing (memory-hard KDF). (3) SHA-256 for replication payload integrity verification. (4) ECDHE for TLS key exchange. All cryptographic operations use vetted, audited libraries (rustls, ring, argon2). No custom cryptographic implementations. |
+| **Implementation** | The system uses the following cryptographic mechanisms: (1) TLS 1.3 with AES-256-GCM or ChaCha20-Poly1305 for transport encryption (via rustls with the ring provider). (2) Argon2id for password hashing (memory-hard KDF). (3) SHA-256 for replication payload integrity verification. (4) ECDHE for TLS key exchange. All cryptographic operations use vetted, audited libraries (rustls, ring, argon2). No custom cryptographic implementations. |
 | **Module/File** | `src/tls.rs`, `src/auth/password.rs` |
-| **Code Evidence** | `NIST SP 800-53: SC-13 — Only FIPS-compatible ciphersuites and TLS 1.2+ are permitted` |
+| **Code Evidence** | `NIST SP 800-53: SC-13 — Only FIPS-compatible ciphersuites and TLS 1.3 are permitted` |
 | **Status** | **Implemented** |
 
 ### SC-17: Public Key Infrastructure Certificates
@@ -412,7 +412,7 @@ assessor can search for), and the implementation status.
 |---|---|
 | **Control** | CM-6 |
 | **Title** | Configuration Settings |
-| **Implementation** | All security-relevant configuration settings have secure defaults and are validated at startup. The `validate()` function enforces: (1) Port must be 636 unless explicitly overridden for testing. (2) TLS certificate and key files must exist. (3) TLS minimum version must be "1.2" or "1.3". (4) Database URL must not be empty. (5) Rate limit parameters must be positive. (6) Replication settings are validated when enabled. The server refuses to start if any validation fails. Configuration is immutable after startup — there is no runtime reconfiguration of security settings. |
+| **Implementation** | All security-relevant configuration settings have secure defaults and are validated at startup. The `validate()` function enforces: (1) Port must be 636 unless explicitly overridden for testing. (2) TLS certificate and key files must exist. (3) TLS minimum version must be "1.3". (4) Database URL must not be empty. (5) Rate limit parameters must be positive. (6) Replication settings are validated when enabled. The server refuses to start if any validation fails. Configuration is immutable after startup — there is no runtime reconfiguration of security settings. |
 | **Module/File** | `src/config.rs` — `validate()` |
 | **Code Evidence** | `NIST SP 800-53: CM-6 — Configuration settings loaded from validated file` |
 | **Status** | **Implemented** |

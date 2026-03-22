@@ -90,7 +90,7 @@ or operational procedure) that validates the control implementation.
 | SC-8 | Transmission Confidentiality | `src/replication/puller.rs` | 277, 357 | Replication uses TLS enforced by sslmode in connection string | Code review |
 | SC-8 | Transmission Confidentiality | `src/config.rs` | 375 | Standard port 636 prevents accidental cleartext exposure | Unit test: `test_non_standard_port_rejected_without_flag` |
 | SC-12 | Cryptographic Key Establishment | `src/tls.rs` | 102 | Private key details not logged; key material protected | Code review |
-| SC-13 | Cryptographic Protection | `src/tls.rs` | 106, 183, 191 | Only strong ciphersuites and TLS 1.2+ permitted; strongest available selected | Unit test: `test_unsupported_tls_version`; integration: `test_tls_12_rejected`, `test_tls_10_rejected` |
+| SC-13 | Cryptographic Protection | `src/tls.rs` | 106, 183, 191 | Only strong ciphersuites and TLS 1.3 permitted; strongest available selected | Unit test: `test_unsupported_tls_version`; integration: `test_tls_12_rejected`, `test_tls_10_rejected` |
 | SC-17 | PKI Certificates | `src/tls.rs` | 70, 94, 207 | Certificates validated at startup; metadata logged for operational awareness | Unit tests: `test_missing_cert_file_returns_error`, `test_missing_key_file_returns_error` |
 | SC-23 | Session Authenticity | `src/main.rs` | 263, 362 | One LDAP session per TLS connection; no session tokens or cookies | Unit test: `test_new_session_is_connected`, `test_unbind_closes_session` |
 
