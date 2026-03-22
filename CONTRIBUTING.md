@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- **Rust 1.94+** — install via [rustup](https://rustup.rs/)
+- **Rust 1.75+** — install via [rustup](https://rustup.rs/)
 - **PostgreSQL 15+** — running locally or in a container
 - **TLS certificates** — self-signed certs are fine for local development (see below)
 

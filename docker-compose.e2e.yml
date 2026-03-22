@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:18-alpine
+    image: postgres:16-alpine
     environment:
       POSTGRES_DB: ldap_test
       POSTGRES_USER: ldap_test
@@ -37,7 +37,7 @@ services:
 
   # Seeds test data after server has run migrations, then runs tests
   ldap-client:
-    image: debian:trixie-slim
+    image: debian:bookworm-slim
     depends_on:
       ldap-server:
         condition: service_healthy

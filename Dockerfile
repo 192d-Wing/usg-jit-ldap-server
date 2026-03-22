@@ -1,5 +1,5 @@
 # Build stage
-FROM rust:slim-trixie AS builder
+FROM rust:slim-bookworm AS builder
 WORKDIR /build
 RUN apt-get update && apt-get install -y pkg-config libssl-dev && rm -rf /var/lib/apt/lists/*
 COPY Cargo.toml Cargo.lock ./
@@ -9,7 +9,7 @@ ENV SQLX_OFFLINE=true
 RUN cargo build --release
 
 # Runtime stage
-FROM debian:trixie-slim
+FROM debian:bookworm-slim
 RUN apt-get update && apt-get install -y ca-certificates curl && rm -rf /var/lib/apt/lists/*
 RUN groupadd -r ldap-server && useradd -r -g ldap-server -s /sbin/nologin ldap-server
 COPY --from=builder /build/target/release/usg-jit-ldap-server /usr/local/bin/
