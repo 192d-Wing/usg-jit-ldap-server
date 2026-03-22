@@ -13,7 +13,7 @@
 //   key derivation function resistant to GPU/ASIC attacks.
 
 use argon2::{
-    Argon2,
+    Algorithm, Argon2, Params, Version,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
 use zeroize::Zeroize;
@@ -37,6 +37,20 @@ pub enum PasswordError {
 }
 
 // ---------------------------------------------------------------------------
+// Hardened Argon2id configuration
+// ---------------------------------------------------------------------------
+
+/// Build an Argon2id instance with hardened parameters suitable for production.
+///
+/// Parameters: m=65536 (64 MiB), t=3 iterations, p=4 parallelism.
+/// These exceed the argon2 crate defaults (m=19456, t=2, p=1) and provide
+/// stronger resistance to GPU/ASIC brute-force attacks.
+fn hardened_argon2() -> Argon2<'static> {
+    let params = Params::new(65536, 3, 4, None).expect("valid Argon2 params");
+    Argon2::new(Algorithm::Argon2id, Version::V0x13, params)
+}
+
+// ---------------------------------------------------------------------------
 // Password operations
 // ---------------------------------------------------------------------------
 
@@ -54,7 +68,7 @@ pub fn hash_password(mut plaintext: Vec<u8>) -> Result<String, PasswordError> {
         ));
     }
     let salt = SaltString::generate(&mut OsRng);
-    let argon2 = Argon2::default();
+    let argon2 = hardened_argon2();
 
     let hash = argon2
         .hash_password(&plaintext, &salt)
@@ -89,10 +103,16 @@ pub fn verify_password(mut plaintext: Vec<u8>, stored_hash: &str) -> Result<bool
             "stored hash exceeds maximum length".into(),
         ));
     }
-    let parsed_hash =
-        PasswordHash::new(stored_hash).map_err(|e| PasswordError::MalformedHash(e.to_string()))?;
+    let parsed_hash = match PasswordHash::new(stored_hash) {
+        Ok(h) => h,
+        Err(e) => {
+            // NIST IA-5: Zeroize plaintext even on hash parse failure.
+            plaintext.zeroize();
+            return Err(PasswordError::MalformedHash(e.to_string()));
+        }
+    };
 
-    let argon2 = Argon2::default();
+    let argon2 = hardened_argon2();
     let result = argon2.verify_password(&plaintext, &parsed_hash);
 
     // NIST IA-5: Zeroize plaintext immediately after verification.

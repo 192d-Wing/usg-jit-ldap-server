@@ -87,7 +87,7 @@ address. Excess attempts are rejected before hash computation occurs.
   `resultCode: unwillingToPerform` and an audit event is emitted.
 - Rate limit thresholds are configurable but have secure defaults:
   - Per-DN: 5 attempts per 60 seconds
-  - Per-IP: 20 attempts per 60 seconds
+  - Per-IP: 50 attempts per 300 seconds
 - After a configurable lockout threshold (e.g., 10 consecutive failures), the
   DN is temporarily locked for a configurable duration.
 

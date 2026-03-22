@@ -51,8 +51,8 @@ LDAP Server's implementation. It serves two audiences:
 | IA-2 | Identification and Authentication | `src/ldap/bind.rs`, `src/auth/password.rs` | Users authenticate via LDAP Simple Bind with DN and password. Password is verified against the hash in `runtime.credentials`. |
 | IA-3 | Device Identification and Authentication | `src/replication/puller.rs`, `src/tls.rs` | Replication channel uses mutual TLS for device-level authentication. Site certificate CN must match registered site ID. |
 | IA-4 | Identifier Management | `src/db/identity.rs` | User and group identifiers (DNs) are managed centrally and replicated. The LDAP server does not create or modify identifiers. |
-| IA-5 | Authenticator Management | `src/auth/password.rs`, `src/ldap/password.rs`, `src/db/runtime.rs` | Ephemeral passwords are issued by JIT Broker with TTLs. Passwords are hashed with Argon2id. Expired passwords are rejected. Password material is zeroized after use. |
-| IA-5(1) | Password-Based Authentication | `src/auth/password.rs` | Passwords are stored as Argon2id hashes. Minimum complexity is enforced by the JIT Broker (not the LDAP server). TTL enforcement limits password lifetime. |
+| IA-5 | Authenticator Management | `src/auth/password.rs`, `src/ldap/password.rs`, `src/db/runtime.rs` | Ephemeral passwords are issued by JIT Broker with TTLs. Passwords are hashed with Argon2id (m=65536, t=3, p=4). Expired passwords are rejected. Password material is zeroized after use, including on error paths. |
+| IA-5(1) | Password-Based Authentication | `src/auth/password.rs` | Passwords are stored as Argon2id hashes with hardened parameters. Minimum complexity is enforced by the JIT Broker (not the LDAP server). TTL enforcement limits password lifetime. |
 | IA-5(6) | Protection of Authenticators | `src/auth/password.rs` | Password hashes stored encrypted at rest (PostgreSQL TDE or disk encryption). In memory, password material uses `Zeroizing<T>` wrapper for zeroization on drop. |
 
 ### SC — System and Communications Protection

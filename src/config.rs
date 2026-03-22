@@ -84,6 +84,11 @@ pub struct ServerSettings {
     /// Per-connection idle timeout in seconds. Default: 300 (5 minutes).
     #[serde(default = "default_idle_timeout_secs")]
     pub idle_timeout_secs: u64,
+
+    /// Absolute maximum session lifetime in seconds, regardless of activity.
+    /// Default: 86400 (24 hours). Prevents indefinitely held connections.
+    #[serde(default = "default_max_session_lifetime_secs")]
+    pub max_session_lifetime_secs: u64,
 }
 
 fn default_max_connections() -> usize {
@@ -92,6 +97,10 @@ fn default_max_connections() -> usize {
 
 fn default_idle_timeout_secs() -> u64 {
     300
+}
+
+fn default_max_session_lifetime_secs() -> u64 {
+    86400
 }
 
 /// TLS certificate and key paths.
@@ -202,6 +211,16 @@ pub struct SecuritySettings {
     #[serde(default = "default_search_rate_window_secs")]
     pub search_rate_window_secs: u64,
 
+    /// Maximum failed bind attempts per source IP within the sliding window.
+    /// Default: 50. Prevents distributed brute-force from a single IP.
+    #[serde(default = "default_max_bind_ip_attempts")]
+    pub max_bind_ip_attempts: u32,
+
+    /// Sliding window duration in seconds for per-IP bind rate limiting.
+    /// Default: 300 (5 minutes).
+    #[serde(default = "default_bind_ip_rate_window_secs")]
+    pub bind_ip_rate_window_secs: u64,
+
     /// DNs authorized to invoke the Password Modify extended operation.
     /// NIST AC-3: Only recognized broker identities may set passwords.
     #[serde(default)]
@@ -218,6 +237,14 @@ fn default_max_searches_per_minute() -> u32 {
 
 fn default_search_rate_window_secs() -> u64 {
     60
+}
+
+fn default_max_bind_ip_attempts() -> u32 {
+    50
+}
+
+fn default_bind_ip_rate_window_secs() -> u64 {
+    300
 }
 
 /// Audit logging configuration.
@@ -574,6 +601,7 @@ enabled = true
         let config: ServerConfig = toml::from_str(&minimal_config_toml()).unwrap();
         assert_eq!(config.server.max_connections, 1024);
         assert_eq!(config.server.idle_timeout_secs, 300);
+        assert_eq!(config.server.max_session_lifetime_secs, 86400);
         assert_eq!(config.database.max_connections, 10);
         assert_eq!(config.security.password_ttl_secs, 28800);
         assert!(config.audit.enabled);

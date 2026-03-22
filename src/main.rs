@@ -37,7 +37,7 @@ use std::time::Instant;
 
 use audit::AuditLogger;
 use audit::events::AuditEvent;
-use auth::rate_limit::{RateLimiter, SearchRateLimiter};
+use auth::rate_limit::{BindIpRateLimiter, RateLimiter, SearchRateLimiter};
 use auth::{
     ConfigBrokerAuthorizer, DatabaseAuthenticator, DatabasePasswordStore, DatabaseSearchBackend,
 };
@@ -138,6 +138,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Err(e.into());
         }
     };
+
+    // Spawn background certificate expiry monitor (checks every hour).
+    // NIST SC-17: Continuous PKI certificate validity monitoring.
+    tls::spawn_cert_expiry_monitor(server_config.tls.cert_path.clone(), 3600);
 
     // Create the audit logger (now with database backing).
     let audit_logger = AuditLogger::new(
@@ -264,6 +268,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         server_config.security.max_bind_attempts,
         server_config.security.rate_limit_window_secs,
     );
+    let bind_ip_rate_limiter = BindIpRateLimiter::new(
+        pg_pool.clone(),
+        server_config.security.max_bind_ip_attempts,
+        server_config.security.bind_ip_rate_window_secs,
+    );
     let search_rate_limiter = SearchRateLimiter::new(
         pg_pool.clone(),
         server_config.security.max_searches_per_minute,
@@ -275,6 +284,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let conn_semaphore = Arc::new(Semaphore::new(server_config.server.max_connections));
     let password_ttl = server_config.security.password_ttl_secs;
     let idle_timeout_secs = server_config.server.idle_timeout_secs;
+    let max_session_lifetime_secs = server_config.server.max_session_lifetime_secs;
 
     // Step 7 & 8: Accept connections with graceful shutdown.
     // NIST SC-23: Each TLS connection gets exactly one LDAP session.
@@ -303,10 +313,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         let tls_acceptor = tls_acceptor.clone();
                         let pool = pg_pool.clone();
                         let rate_limiter = rate_limiter.clone();
+                        let bind_ip_rate_limiter = bind_ip_rate_limiter.clone();
                         let search_rate_limiter = search_rate_limiter.clone();
                         let audit = audit_logger.clone();
                         let broker_auth = broker_authorizer.clone();
                         let idle_timeout = idle_timeout_secs;
+                        let max_lifetime = max_session_lifetime_secs;
 
                         tokio::spawn(async move {
                             // Perform TLS handshake.
@@ -321,7 +333,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     audit.log(AuditEvent::TlsError {
                                         timestamp: chrono::Utc::now(),
                                         source_addr: peer_addr.to_string(),
-                                        error_detail: e.to_string(),
+                                        error_detail: "TLS handshake failed".to_string(),
                                     }).await;
                                     drop(permit);
                                     return;
@@ -340,11 +352,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 peer_addr,
                                 pool,
                                 rate_limiter,
+                                bind_ip_rate_limiter,
                                 search_rate_limiter,
                                 audit,
                                 broker_auth,
                                 password_ttl,
                                 idle_timeout,
+                                max_lifetime,
                             ).await;
                             drop(permit);
                         });
@@ -385,11 +399,13 @@ async fn handle_connection(
     peer_addr: SocketAddr,
     pool: Arc<sqlx::PgPool>,
     rate_limiter: RateLimiter,
+    bind_ip_rate_limiter: BindIpRateLimiter,
     search_rate_limiter: SearchRateLimiter,
     audit: AuditLogger,
     broker_authorizer: Arc<ConfigBrokerAuthorizer>,
     password_ttl: u64,
     idle_timeout_secs: u64,
+    max_session_lifetime_secs: u64,
 ) {
     let connection_start = Instant::now();
 
@@ -397,7 +413,7 @@ async fn handle_connection(
     // NIST IA-2: The authenticator is the identification and authentication
     // enforcement point for this connection.
     let authenticator =
-        DatabaseAuthenticator::new(pool.clone(), rate_limiter, audit.clone(), peer_addr);
+        DatabaseAuthenticator::new(pool.clone(), rate_limiter, bind_ip_rate_limiter, audit.clone(), peer_addr);
     let search_backend = DatabaseSearchBackend::new(pool.clone(), search_rate_limiter, peer_addr);
     let password_store = DatabasePasswordStore::new(pool.clone(), password_ttl);
 
@@ -425,8 +441,19 @@ async fn handle_connection(
     let mut temp_buf = [0u8; 4096];
 
     let idle_timeout = tokio::time::Duration::from_secs(idle_timeout_secs);
+    let max_lifetime = tokio::time::Duration::from_secs(max_session_lifetime_secs);
 
     loop {
+        // NIST SC-10: Enforce absolute session lifetime regardless of activity.
+        if connection_start.elapsed() >= max_lifetime {
+            tracing::info!(
+                peer = %peer_addr,
+                lifetime_secs = max_session_lifetime_secs,
+                "absolute session lifetime exceeded — closing connection"
+            );
+            break;
+        }
+
         // Read data with idle timeout.
         let read_result = tokio::time::timeout(idle_timeout, reader.read(&mut temp_buf)).await;
 

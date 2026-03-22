@@ -24,6 +24,7 @@ async fn test_full_bind_lifecycle() {
     let auth = usg_jit_ldap_server::auth::DatabaseAuthenticator::new(
         pool_arc.clone(),
         rate_limiter,
+        usg_jit_ldap_server::auth::rate_limit::BindIpRateLimiter::new(pool_arc.clone(), 50, 300),
         audit,
         peer_addr,
     );
@@ -42,6 +43,7 @@ async fn test_full_bind_lifecycle() {
     let auth2 = usg_jit_ldap_server::auth::DatabaseAuthenticator::new(
         pool_arc.clone(),
         usg_jit_ldap_server::auth::rate_limit::RateLimiter::new(pool_arc.clone(), 10, 300),
+        usg_jit_ldap_server::auth::rate_limit::BindIpRateLimiter::new(pool_arc.clone(), 50, 300),
         usg_jit_ldap_server::audit::AuditLogger::tracing_only(),
         peer_addr,
     );
@@ -73,6 +75,7 @@ async fn test_bind_with_expired_password() {
     let auth = usg_jit_ldap_server::auth::DatabaseAuthenticator::new(
         pool_arc.clone(),
         usg_jit_ldap_server::auth::rate_limit::RateLimiter::new(pool_arc.clone(), 10, 300),
+        usg_jit_ldap_server::auth::rate_limit::BindIpRateLimiter::new(pool_arc.clone(), 50, 300),
         usg_jit_ldap_server::audit::AuditLogger::tracing_only(),
         common::test_addr(),
     );
@@ -111,6 +114,7 @@ async fn test_bind_with_disabled_user() {
     let auth = usg_jit_ldap_server::auth::DatabaseAuthenticator::new(
         pool_arc.clone(),
         usg_jit_ldap_server::auth::rate_limit::RateLimiter::new(pool_arc.clone(), 10, 300),
+        usg_jit_ldap_server::auth::rate_limit::BindIpRateLimiter::new(pool_arc.clone(), 50, 300),
         usg_jit_ldap_server::audit::AuditLogger::tracing_only(),
         common::test_addr(),
     );

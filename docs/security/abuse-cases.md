@@ -169,7 +169,8 @@ may have perimeter protections that reduce exposure.
 |---|---|---|---|
 | 1 | Connection limit | Maximum concurrent connections (default: 1024) | `src/config.rs` — `max_connections` |
 | 2 | Idle timeout | Connections closed after inactivity (default: 300s) | `src/config.rs` — `idle_timeout_secs` |
-| 3 | Rate limiting | Bind attempts throttled per DN; rejects before hash computation | `src/auth/rate_limit.rs` |
+| 2b | Absolute session lifetime | Connections closed after 24h regardless of activity | `src/config.rs` — `max_session_lifetime_secs` |
+| 3 | Rate limiting | Bind attempts throttled per DN and per source IP; rejects before hash computation | `src/auth/rate_limit.rs` |
 | 4 | PDU size limit | Maximum message size prevents memory exhaustion | `src/ldap/codec.rs` |
 | 5 | Search result limit | Server-enforced maximum result size (default: 1000) | `src/ldap/search.rs` — `DEFAULT_MAX_RESULT_SIZE` |
 | 6 | DB connection pool | Bounded pool prevents database connection exhaustion | `src/db/pool.rs` — `max_connections` |

@@ -257,7 +257,7 @@ assessor can search for), and the implementation status.
 |---|---|
 | **Control** | IA-11 |
 | **Title** | Re-authentication |
-| **Implementation** | Re-authentication is enforced through session termination. When a connection's idle timeout expires (default: 300 seconds), the session is closed and the client must establish a new TLS connection and Bind again. There is no session resumption mechanism. The LDAPv3 protocol also allows re-Bind within a session (the session state machine supports transitioning from `Bound` back to `Bound` with a different DN). |
+| **Implementation** | Re-authentication is enforced through session termination. When a connection's idle timeout expires (default: 300 seconds) or the absolute session lifetime is reached (default: 86400 seconds / 24 hours), the session is closed and the client must establish a new TLS connection and Bind again. The absolute lifetime prevents indefinitely held connections regardless of activity. There is no session resumption mechanism. The LDAPv3 protocol also allows re-Bind within a session (the session state machine supports transitioning from `Bound` back to `Bound` with a different DN); re-bind identity changes are logged at WARN level for audit trail. |
 | **Module/File** | `src/ldap/session.rs`, `src/main.rs` (idle timeout) |
 | **Code Evidence** | `NIST SP 800-53: AC-12` — idle timeout enforcement |
 | **Status** | **Implemented** |
@@ -327,9 +327,9 @@ assessor can search for), and the implementation status.
 |---|---|
 | **Control** | SC-17 |
 | **Title** | Public Key Infrastructure Certificates |
-| **Implementation** | Server TLS certificates are loaded from PEM files configured in `config.toml`. At startup, the certificate chain is validated (non-empty, parseable). Certificate metadata (chain position, size) is logged for operational awareness. Certificate validity checking (not-before, not-after) is performed by the TLS library during handshake. The operational security guide covers certificate rotation procedures, expiry monitoring, and CA chain management. |
-| **Module/File** | `src/tls.rs` — `load_certificates()`, `log_certificate_info()` |
-| **Code Evidence** | `NIST SP 800-53: SC-17` — certificate validation at startup |
+| **Implementation** | Server TLS certificates are loaded from PEM files configured in `config.toml`. At startup, the certificate chain is validated (non-empty, parseable). Certificate metadata (chain position, size) is logged for operational awareness. Certificate validity checking (not-before, not-after) is performed by the TLS library during handshake. A background task monitors certificate expiry hourly, logging WARN/ERROR as certificates approach expiration. The operational security guide covers certificate rotation procedures, expiry monitoring, and CA chain management. |
+| **Module/File** | `src/tls.rs` — `load_certificates()`, `log_certificate_info()`, `spawn_cert_expiry_monitor()` |
+| **Code Evidence** | `NIST SP 800-53: SC-17` — certificate validation at startup and continuous runtime monitoring |
 | **Status** | **Implemented** (loading/validation); **Operational** (rotation, CA management) |
 
 ### SC-23: Session Authenticity

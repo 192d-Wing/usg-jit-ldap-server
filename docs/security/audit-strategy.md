@@ -15,11 +15,10 @@ operation that does not appear here is a gap that must be addressed.
 |---|---|---|---|
 | `bind_attempt` (success) | Successful LDAP Simple Bind | INFO | timestamp, source_addr, dn, outcome=Success |
 | `bind_attempt` (invalid_credentials) | Failed Bind — wrong password | WARN | timestamp, source_addr, dn, outcome=InvalidCredentials |
-| `bind_attempt` (user_not_found) | Failed Bind — DN does not exist | WARN | timestamp, source_addr, dn, outcome=UserNotFound |
+| `bind_attempt` (invalid_credentials) | Failed Bind — user not found, account disabled, or wrong password | WARN | timestamp, source_addr, dn, outcome=InvalidCredentials |
 | `bind_attempt` (account_locked) | Failed Bind — rate limit lockout | WARN | timestamp, source_addr, dn, outcome=AccountLocked |
-| `bind_attempt` (account_disabled) | Failed Bind — user disabled in identity | WARN | timestamp, source_addr, dn, outcome=AccountDisabled |
-| `bind_attempt` (rate_limited) | Failed Bind — rate limit exceeded | WARN | timestamp, source_addr, dn, outcome=RateLimited |
-| `bind_attempt` (internal_error) | Failed Bind — internal error | ERROR | timestamp, source_addr, dn, outcome=InternalError, detail |
+| `bind_attempt` (rate_limited) | Failed Bind — per-DN or per-IP rate limit exceeded | WARN | timestamp, source_addr, dn, outcome=RateLimited |
+| `bind_attempt` (internal_error) | Failed Bind — internal error | ERROR | timestamp, source_addr, dn, outcome=InternalError |
 
 ### Directory Operation Events
 
@@ -47,7 +46,7 @@ operation that does not appear here is a gap that must be addressed.
 |---|---|---|---|
 | `connection_opened` | TLS handshake completed | INFO | timestamp, source_addr |
 | `connection_closed` | Connection terminated | INFO | timestamp, source_addr, messages_processed, duration_secs |
-| `tls_error` | TLS handshake or connection error | WARN | timestamp, source_addr, error_detail |
+| `tls_error` | TLS handshake or connection error | WARN | timestamp, source_addr, error_detail (sanitized — no internal details) |
 
 ### Service Lifecycle Events
 

@@ -110,7 +110,7 @@ impl LdapSession {
     ///
     /// Called after successful authentication. Replaces any previous bind identity
     /// (re-bind is permitted per RFC 4511 Section 4.2.1).
-    pub fn transition_to_bound(&mut self, dn: String) {
+    pub(crate) fn transition_to_bound(&mut self, dn: String) {
         tracing::info!(
             peer = %self.peer_addr,
             dn = %dn,

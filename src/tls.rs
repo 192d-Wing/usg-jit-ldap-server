@@ -240,6 +240,43 @@ fn log_certificate_info(certs: &[CertificateDer<'static>]) {
 }
 
 // ---------------------------------------------------------------------------
+// Runtime certificate expiry monitoring
+// ---------------------------------------------------------------------------
+
+/// Spawn a background task that periodically checks certificate expiry.
+///
+/// NIST SC-17: Continuous monitoring of PKI certificate validity.
+/// Logs warnings/errors as certificates approach expiration, enabling
+/// operators to rotate before service disruption.
+pub fn spawn_cert_expiry_monitor(cert_path: String, check_interval_secs: u64) {
+    tokio::spawn(async move {
+        let interval = tokio::time::Duration::from_secs(check_interval_secs);
+        let mut ticker = tokio::time::interval(interval);
+        // Skip the first immediate tick — startup already checks expiry.
+        ticker.tick().await;
+        loop {
+            ticker.tick().await;
+            match load_certificates(&cert_path) {
+                Ok(certs) if !certs.is_empty() => log_certificate_info(&certs),
+                Ok(_) => {
+                    tracing::error!(
+                        cert_path = %cert_path,
+                        "CRITICAL: certificate file is empty during runtime check"
+                    );
+                }
+                Err(e) => {
+                    tracing::error!(
+                        cert_path = %cert_path,
+                        error = %e,
+                        "failed to read certificate during runtime expiry check"
+                    );
+                }
+            }
+        }
+    });
+}
+
+// ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
 

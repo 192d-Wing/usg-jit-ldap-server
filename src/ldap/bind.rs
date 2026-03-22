@@ -137,8 +137,7 @@ impl<A: Authenticator> BindHandler<A> {
         if req.name.is_empty() || password.is_empty() {
             tracing::warn!(
                 peer = %session.peer_addr(),
-                dn = %req.name,
-                "bind rejected: anonymous bind attempt"
+                "bind rejected: anonymous or unauthenticated bind attempt"
             );
             return BindResponse {
                 result: LdapResult {
@@ -156,6 +155,17 @@ impl<A: Authenticator> BindHandler<A> {
         match auth_result {
             AuthResult::Success => {
                 // NIST IA-2: Successful identification and authentication.
+                // Log re-bind identity changes for audit trail.
+                if let Some(old_info) = session.bind_info() {
+                    if old_info.dn != req.name {
+                        tracing::warn!(
+                            peer = %session.peer_addr(),
+                            old_dn = %old_info.dn,
+                            new_dn = %req.name,
+                            "session re-bound to different identity"
+                        );
+                    }
+                }
                 tracing::info!(
                     peer = %session.peer_addr(),
                     dn = %req.name,

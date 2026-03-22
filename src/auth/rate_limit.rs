@@ -152,6 +152,87 @@ impl RateLimiter {
 }
 
 // ---------------------------------------------------------------------------
+// Per-IP bind rate limiter
+// ---------------------------------------------------------------------------
+
+/// Per-source-IP rate limiter for bind attempts.
+///
+/// NIST AC-7: Complements per-DN rate limiting by also enforcing per-IP
+/// thresholds, preventing distributed brute-force attacks where an attacker
+/// rotates through many DNs from a single source IP.
+#[derive(Clone)]
+pub struct BindIpRateLimiter {
+    pool: Arc<PgPool>,
+    max_attempts: u32,
+    window_secs: u64,
+}
+
+impl BindIpRateLimiter {
+    pub fn new(pool: Arc<PgPool>, max_attempts: u32, window_secs: u64) -> Self {
+        Self {
+            pool,
+            max_attempts,
+            window_secs,
+        }
+    }
+
+    /// Check whether a bind attempt from the given IP is allowed.
+    pub async fn check_and_increment(&self, source_ip: &str) -> Result<(), RateLimitError> {
+        if source_ip.is_empty() {
+            return Err(RateLimitError::Exceeded {
+                dn: source_ip.to_string(),
+                attempts: 0,
+                window_secs: self.window_secs,
+            });
+        }
+
+        let count = sqlx::query_scalar::<_, i32>(
+            r#"
+            INSERT INTO runtime.bind_ip_rate_limit_state (source_ip, attempt_count, window_start)
+            VALUES ($1::inet, 1, now())
+            ON CONFLICT (source_ip) DO UPDATE
+            SET
+                attempt_count = CASE
+                    WHEN runtime.bind_ip_rate_limit_state.window_start
+                         + make_interval(secs => $3::double precision) < now()
+                    THEN 1
+                    ELSE runtime.bind_ip_rate_limit_state.attempt_count + 1
+                END,
+                window_start = CASE
+                    WHEN runtime.bind_ip_rate_limit_state.window_start
+                         + make_interval(secs => $3::double precision) < now()
+                    THEN now()
+                    ELSE runtime.bind_ip_rate_limit_state.window_start
+                END
+            RETURNING attempt_count
+            "#,
+        )
+        .bind(source_ip)
+        .bind(self.max_attempts as i32)
+        .bind(self.window_secs as f64)
+        .fetch_one(self.pool.as_ref())
+        .await?;
+
+        if count > self.max_attempts as i32 {
+            tracing::warn!(
+                source_ip = %source_ip,
+                attempt_count = count,
+                max_attempts = self.max_attempts,
+                window_secs = self.window_secs,
+                "NIST AC-7: per-IP bind rate limit exceeded"
+            );
+            Err(RateLimitError::Exceeded {
+                dn: format!("ip:{source_ip}"),
+                attempts: count as u32,
+                window_secs: self.window_secs,
+            })
+        } else {
+            Ok(())
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Search rate limiter
 // ---------------------------------------------------------------------------
 

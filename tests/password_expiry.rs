@@ -20,6 +20,7 @@ async fn test_password_ttl_enforcement() {
     let auth = usg_jit_ldap_server::auth::DatabaseAuthenticator::new(
         pool_arc.clone(),
         usg_jit_ldap_server::auth::rate_limit::RateLimiter::new(pool_arc.clone(), 10, 300),
+        usg_jit_ldap_server::auth::rate_limit::BindIpRateLimiter::new(pool_arc.clone(), 50, 300),
         usg_jit_ldap_server::audit::AuditLogger::tracing_only(),
         common::test_addr(),
     );
@@ -59,6 +60,7 @@ async fn test_revoked_password_rejected() {
     let auth = usg_jit_ldap_server::auth::DatabaseAuthenticator::new(
         pool_arc.clone(),
         usg_jit_ldap_server::auth::rate_limit::RateLimiter::new(pool_arc.clone(), 10, 300),
+        usg_jit_ldap_server::auth::rate_limit::BindIpRateLimiter::new(pool_arc.clone(), 50, 300),
         usg_jit_ldap_server::audit::AuditLogger::tracing_only(),
         common::test_addr(),
     );

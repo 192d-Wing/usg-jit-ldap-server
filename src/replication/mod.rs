@@ -121,13 +121,11 @@ impl ReplicationConfig {
             .unwrap_or("")
             .split('&')
             .filter_map(|param| param.split_once('='))
-            .any(|(key, value)| {
-                key == "sslmode" && (value == "verify-full" || value == "verify-ca")
-            });
+            .any(|(key, value)| key == "sslmode" && value == "verify-full");
         if !has_valid_sslmode {
             return Err(
-                "central_url must use sslmode=verify-full or sslmode=verify-ca \
-                 (NIST SC-8: transmission confidentiality)"
+                "central_url must use sslmode=verify-full \
+                 (NIST SC-8: transmission confidentiality and hostname verification)"
                     .into(),
             );
         }

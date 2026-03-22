@@ -97,12 +97,16 @@ implemented; all other LDAPv3 operations return `unwillingToPerform`.
 
 ### AC-7: Unsuccessful Logon Attempts
 
-The rate limiter enforces per-DN bind attempt limits using a sliding window
-counter. When a Bind request arrives, the rate limiter is checked before the
-password hash is retrieved or computed. If the attempt count exceeds the
-configured threshold (default: 5 attempts per 60 seconds), the Bind is rejected
-with `unwillingToPerform` and an audit event is emitted. This prevents both
-credential guessing and CPU exhaustion via repeated Argon2 computations.
+The rate limiter enforces both per-DN and per-source-IP bind attempt limits
+using sliding window counters. When a Bind request arrives, both rate limiters
+are checked before the password hash is retrieved or computed. If either
+attempt count exceeds its configured threshold (per-DN default: 5 attempts
+per 60 seconds; per-IP default: 50 attempts per 300 seconds), the Bind is
+rejected with `unwillingToPerform` and an audit event is emitted. The per-DN
+limiter prevents credential guessing against individual accounts, while the
+per-IP limiter prevents distributed brute-force attacks that rotate through
+many DNs from a single source. Both checks occur before Argon2 computation
+to prevent CPU exhaustion.
 
 ---
 
@@ -219,9 +223,11 @@ timing-based user enumeration.
 ### IA-5: Authenticator Management
 
 Ephemeral passwords are issued by the external JIT Broker with configurable TTLs
-(default: 8 hours). Passwords are hashed with Argon2id (memory-hard, GPU/ASIC
-resistant) before storage. Plaintext password bytes are zeroized in memory
-immediately after hashing or verification using the `zeroize` crate. Expired
+(default: 8 hours). Passwords are hashed with Argon2id using hardened parameters
+(m=65536/64 MiB, t=3 iterations, p=4 parallelism) which exceed NIST SP 800-63B
+minimums and provide strong resistance to GPU/ASIC attacks. Plaintext password
+bytes are zeroized in memory immediately after hashing or verification using the
+`zeroize` crate, including on error paths. Expired
 passwords are rejected during Bind verification. Passwords are never logged,
 never included in error messages, and never replicated. The `used` flag supports
 single-use credential policy with transactional locking.
@@ -229,8 +235,8 @@ single-use credential policy with transactional locking.
 ### IA-5(1): Password-Based Authentication
 
 Passwords are stored as Argon2id hashes in PHC string format with embedded
-random salts. The Argon2id algorithm is memory-hard and resistant to GPU and
-ASIC-based cracking. Password complexity enforcement is the responsibility of
+random salts and hardened parameters (m=65536, t=3, p=4). The Argon2id
+algorithm is memory-hard and resistant to GPU and ASIC-based cracking. Password complexity enforcement is the responsibility of
 the JIT Broker since the LDAP server only verifies passwords, not sets them.
 TTL enforcement limits password lifetime.
 
@@ -282,8 +288,10 @@ implementations exist in the codebase.
 
 Server TLS certificates are loaded from PEM files and validated at startup
 (non-empty, parseable, valid chain). Certificate validity checking is performed
-by the TLS library during handshake. The operational security guide covers
-certificate rotation, expiry monitoring, and CA chain management.
+by the TLS library during handshake. A background task monitors certificate
+expiry hourly, logging warnings as certificates approach expiration. The
+operational security guide covers certificate rotation, expiry monitoring,
+and CA chain management.
 
 ### SC-23: Session Authenticity
 

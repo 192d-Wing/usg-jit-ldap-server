@@ -29,7 +29,7 @@ use crate::audit::AuditLogger;
 use crate::audit::events::{AuditEvent, BindOutcome};
 use crate::ldap::bind::{AuthResult, Authenticator};
 
-use rate_limit::{RateLimiter, SearchRateLimiter};
+use rate_limit::{BindIpRateLimiter, RateLimiter, SearchRateLimiter};
 
 // ---------------------------------------------------------------------------
 // DatabaseAuthenticator
@@ -49,6 +49,7 @@ use rate_limit::{RateLimiter, SearchRateLimiter};
 pub struct DatabaseAuthenticator {
     pool: Arc<PgPool>,
     rate_limiter: RateLimiter,
+    bind_ip_rate_limiter: BindIpRateLimiter,
     audit: AuditLogger,
     /// Socket address of the current connection, used for audit logging.
     /// Set per-connection when constructing the authenticator.
@@ -63,12 +64,14 @@ impl DatabaseAuthenticator {
     pub fn new(
         pool: Arc<PgPool>,
         rate_limiter: RateLimiter,
+        bind_ip_rate_limiter: BindIpRateLimiter,
         audit: AuditLogger,
         peer_addr: SocketAddr,
     ) -> Self {
         Self {
             pool,
             rate_limiter,
+            bind_ip_rate_limiter,
             audit,
             peer_addr,
         }
@@ -92,10 +95,20 @@ impl Authenticator for DatabaseAuthenticator {
         password_bytes: &'a [u8],
     ) -> Pin<Box<dyn Future<Output = AuthResult> + Send + 'a>> {
         Box::pin(async move {
-            // Step 1: Rate limit check (NIST AC-7).
+            // Step 1a: Per-DN rate limit check (NIST AC-7).
             // This MUST happen before any password hash computation to prevent
             // CPU exhaustion via repeated argon2 evaluations.
             if let Err(_e) = self.rate_limiter.check_and_increment(dn).await {
+                let event = AuditEvent::bind_attempt(self.peer_addr, dn, BindOutcome::RateLimited);
+                self.audit.log(event).await;
+                return AuthResult::AccountLocked;
+            }
+
+            // Step 1b: Per-IP rate limit check (NIST AC-7).
+            // Prevents distributed brute-force attacks from a single source IP
+            // that rotate through many different DNs.
+            let source_ip = self.peer_addr.ip().to_string();
+            if let Err(_e) = self.bind_ip_rate_limiter.check_and_increment(&source_ip).await {
                 let event = AuditEvent::bind_attempt(self.peer_addr, dn, BindOutcome::RateLimited);
                 self.audit.log(event).await;
                 return AuthResult::AccountLocked;
@@ -124,7 +137,7 @@ impl Authenticator for DatabaseAuthenticator {
                         "$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
                     );
                     tracing::warn!(dn = %dn, peer = %self.peer_addr, "bind: user not found");
-                    self.record_failure(dn, "user_not_found").await;
+                    self.record_failure(dn, "invalid_credentials").await;
                     let event = AuditEvent::bind_attempt(
                         self.peer_addr,
                         dn,
@@ -139,18 +152,18 @@ impl Authenticator for DatabaseAuthenticator {
                         self.peer_addr,
                         dn,
                         BindOutcome::InternalError {
-                            detail: e.to_string(),
+                            detail: "identity lookup failed".to_string(),
                         },
                     );
                     self.audit.log(event).await;
-                    return AuthResult::InternalError(e.to_string());
+                    return AuthResult::InternalError("internal error".to_string());
                 }
             };
 
             // Check user is enabled.
             if !user.enabled {
                 tracing::warn!(dn = %dn, "bind: account disabled");
-                self.record_failure(dn, "account_disabled").await;
+                self.record_failure(dn, "invalid_credentials").await;
                 let event =
                     AuditEvent::bind_attempt(self.peer_addr, dn, BindOutcome::InvalidCredentials);
                 self.audit.log(event).await;

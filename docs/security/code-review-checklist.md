@@ -110,6 +110,8 @@ must be resolved before merge.
 - [ ] SASL Bind requests are rejected with `authMethodNotSupported`.
 - [ ] Anonymous Binds (empty DN or empty password) are explicitly rejected.
 - [ ] Search filter complexity is bounded (maximum depth, maximum components).
+- [ ] LDAP strings reject embedded NULL bytes to prevent DN/filter comparison bypasses.
+- [ ] BER length parsing uses `checked_shl()` to prevent integer overflow.
 - [ ] Search `sizeLimit` is capped by server-side `max_result_size` regardless
   of the client's requested limit.
 - [ ] Malformed BER encoding causes connection close, not a panic or undefined
@@ -122,13 +124,17 @@ must be resolved before merge.
 - [ ] [CRITICAL] Error messages returned to the client never contain: password
   bytes, password hashes, internal file paths, stack traces, database connection
   strings, or configuration details.
-- [ ] [CRITICAL] "User not found" and "wrong password" produce the same client-
-  visible error (`InvalidCredentials`) to prevent user enumeration.
+- [ ] [CRITICAL] "User not found", "account disabled", and "wrong password" produce
+  the same client-visible error (`InvalidCredentials`) and the same audit failure
+  reason (`invalid_credentials`) to prevent user enumeration.
+- [ ] Password Modify returns `InsufficientAccessRights` (not `NoSuchObject`) for
+  missing users to prevent user enumeration via extended operations.
 - [ ] Account lockout also returns `InvalidCredentials` (same as wrong password)
   to prevent lockout status disclosure.
 - [ ] Internal errors return a generic "internal server error" message. Detailed
-  error information is logged server-side only.
-- [ ] Database errors do not expose schema names, table names, or SQL to the client.
+  error information is logged server-side via tracing only — never in audit events.
+- [ ] Database errors do not expose schema names, table names, or SQL to the client
+  or to audit event records stored in the database.
 - [ ] `unwrap()` calls are justified or replaced with proper error handling.
   `unwrap()` on user-controlled data is forbidden.
 

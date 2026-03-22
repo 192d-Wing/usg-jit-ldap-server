@@ -411,20 +411,29 @@ impl ReplicationPuller {
         for entry in entries {
             match entry.change_type.as_str() {
                 "user_upsert" => {
+                    let username = entry
+                        .payload
+                        .get("username")
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.is_empty())
+                        .ok_or("user_upsert: missing or empty username")?
+                        .to_string();
+                    let dn = entry
+                        .payload
+                        .get("dn")
+                        .and_then(|v| v.as_str())
+                        .filter(|s| !s.is_empty())
+                        .ok_or("user_upsert: missing or empty dn")?
+                        .to_string();
+                    let enabled = entry
+                        .payload
+                        .get("enabled")
+                        .and_then(|v| v.as_bool())
+                        .ok_or("user_upsert: missing enabled field")?;
                     let record: UserRecord = UserRecord {
                         user_id: entry.entity_id,
-                        username: entry
-                            .payload
-                            .get("username")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default()
-                            .to_string(),
-                        dn: entry
-                            .payload
-                            .get("dn")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or_default()
-                            .to_string(),
+                        username,
+                        dn,
                         display_name: entry
                             .payload
                             .get("display_name")
@@ -435,11 +444,7 @@ impl ReplicationPuller {
                             .get("email")
                             .and_then(|v| v.as_str())
                             .map(String::from),
-                        enabled: entry
-                            .payload
-                            .get("enabled")
-                            .and_then(|v| v.as_bool())
-                            .unwrap_or(true),
+                        enabled,
                         updated_at: Utc::now(),
                     };
                     changes.push(ReplicationChange::UserUpsert(record));
@@ -456,13 +461,15 @@ impl ReplicationPuller {
                             .payload
                             .get("group_name")
                             .and_then(|v| v.as_str())
-                            .unwrap_or_default()
+                            .filter(|s| !s.is_empty())
+                            .ok_or("group_upsert: missing or empty group_name")?
                             .to_string(),
                         dn: entry
                             .payload
                             .get("dn")
                             .and_then(|v| v.as_str())
-                            .unwrap_or_default()
+                            .filter(|s| !s.is_empty())
+                            .ok_or("group_upsert: missing or empty dn")?
                             .to_string(),
                         description: entry
                             .payload
@@ -483,8 +490,10 @@ impl ReplicationPuller {
                         .payload
                         .get("group_id")
                         .and_then(|v| v.as_str())
-                        .and_then(|s| Uuid::parse_str(s).ok())
-                        .unwrap_or(Uuid::nil());
+                        .map(|s| Uuid::parse_str(s))
+                        .transpose()
+                        .map_err(|e| format!("membership_add: invalid group_id UUID: {e}"))?
+                        .ok_or("membership_add: missing group_id")?;
                     changes.push(ReplicationChange::MembershipChange {
                         user_id: entry.entity_id,
                         group_id,
@@ -496,8 +505,10 @@ impl ReplicationPuller {
                         .payload
                         .get("group_id")
                         .and_then(|v| v.as_str())
-                        .and_then(|s| Uuid::parse_str(s).ok())
-                        .unwrap_or(Uuid::nil());
+                        .map(|s| Uuid::parse_str(s))
+                        .transpose()
+                        .map_err(|e| format!("membership_remove: invalid group_id UUID: {e}"))?
+                        .ok_or("membership_remove: missing group_id")?;
                     changes.push(ReplicationChange::MembershipChange {
                         user_id: entry.entity_id,
                         group_id,
@@ -509,8 +520,10 @@ impl ReplicationPuller {
                         .payload
                         .get("site_id")
                         .and_then(|v| v.as_str())
-                        .and_then(|s| Uuid::parse_str(s).ok())
-                        .unwrap_or(Uuid::nil());
+                        .map(|s| Uuid::parse_str(s))
+                        .transpose()
+                        .map_err(|e| format!("site_policy_grant: invalid site_id UUID: {e}"))?
+                        .ok_or("site_policy_grant: missing site_id")?;
                     changes.push(ReplicationChange::SitePolicyChange {
                         user_id: entry.entity_id,
                         site_id,
@@ -522,8 +535,10 @@ impl ReplicationPuller {
                         .payload
                         .get("site_id")
                         .and_then(|v| v.as_str())
-                        .and_then(|s| Uuid::parse_str(s).ok())
-                        .unwrap_or(Uuid::nil());
+                        .map(|s| Uuid::parse_str(s))
+                        .transpose()
+                        .map_err(|e| format!("site_policy_revoke: invalid site_id UUID: {e}"))?
+                        .ok_or("site_policy_revoke: missing site_id")?;
                     changes.push(ReplicationChange::SitePolicyChange {
                         user_id: entry.entity_id,
                         site_id,

@@ -434,7 +434,10 @@ pub fn decode_length(bytes: &[u8]) -> Result<(usize, usize)> {
         }
         let mut len: usize = 0;
         for i in 0..num_octets {
-            len = (len << 8) | (bytes[1 + i] as usize);
+            len = len
+                .checked_shl(8)
+                .ok_or_else(|| CodecError::InvalidFormat("BER length overflow".into()))?
+                | (bytes[1 + i] as usize);
         }
         Ok((len, 1 + num_octets))
     }
@@ -519,6 +522,12 @@ pub fn decode_boolean(bytes: &[u8]) -> Result<(bool, usize)> {
 /// Decode a UTF-8 string from an OCTET STRING TLV.
 pub fn decode_ldap_string(bytes: &[u8]) -> Result<(String, usize)> {
     let (raw, consumed) = decode_octet_string(bytes)?;
+    // Reject embedded NULL bytes which can cause DN/filter comparison bypasses.
+    if raw.iter().any(|&b| b == 0) {
+        return Err(CodecError::InvalidFormat(
+            "embedded NULL byte in LDAP string".into(),
+        ));
+    }
     let s = String::from_utf8(raw).map_err(|_| CodecError::InvalidUtf8)?;
     Ok((s, consumed))
 }
@@ -548,7 +557,9 @@ impl<'a> TlvIter<'a> {
 
     fn next_tlv(&mut self) -> Result<(u8, &'a [u8])> {
         let (tag, value, consumed) = decode_tlv(self.remaining())?;
-        self.offset += consumed;
+        self.offset = self.offset.checked_add(consumed).ok_or_else(|| {
+            CodecError::InvalidFormat("TLV iterator offset overflow".into())
+        })?;
         Ok((tag, value))
     }
 }
@@ -748,7 +759,7 @@ fn decode_search_request(value: &[u8]) -> Result<SearchRequest> {
 
 /// Recursively decode a search filter.
 pub fn decode_filter(tag: u8, value: &[u8], depth: usize) -> Result<Filter> {
-    if depth > MAX_FILTER_DEPTH {
+    if depth >= MAX_FILTER_DEPTH {
         return Err(CodecError::InvalidFormat(
             "filter nesting exceeds maximum depth".into(),
         ));

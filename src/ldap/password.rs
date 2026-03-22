@@ -74,15 +74,27 @@ pub fn parse_passwd_modify_request(value: &[u8]) -> Result<PasswdModifyRequest, 
     let mut offset = 0;
     while offset < seq_contents.len() {
         let (field_tag, field_tag_len) = decode_tag(&seq_contents[offset..])?;
-        let (field_len, field_len_len) = decode_length(&seq_contents[offset + field_tag_len..])?;
-        let header_len = field_tag_len + field_len_len;
+        let tag_end = offset.checked_add(field_tag_len).ok_or_else(|| {
+            CodecError::InvalidFormat("PasswdModifyRequestValue offset overflow".into())
+        })?;
+        let (field_len, field_len_len) = decode_length(&seq_contents[tag_end..])?;
+        let header_len = field_tag_len.checked_add(field_len_len).ok_or_else(|| {
+            CodecError::InvalidFormat("PasswdModifyRequestValue header overflow".into())
+        })?;
+        let field_end = offset
+            .checked_add(header_len)
+            .and_then(|h| h.checked_add(field_len))
+            .ok_or_else(|| {
+                CodecError::InvalidFormat("PasswdModifyRequestValue offset overflow".into())
+            })?;
         // Bounds check: prevent panic on malformed length field.
-        if offset + header_len + field_len > seq_contents.len() {
+        if field_end > seq_contents.len() {
             return Err(CodecError::InvalidFormat(
                 "PasswdModifyRequestValue field length exceeds available data".into(),
             ));
         }
-        let field_value = &seq_contents[offset + header_len..offset + header_len + field_len];
+        let value_start = offset + header_len;
+        let field_value = &seq_contents[value_start..field_end];
 
         match field_tag {
             0x80 => {
@@ -107,7 +119,7 @@ pub fn parse_passwd_modify_request(value: &[u8]) -> Result<PasswdModifyRequest, 
             }
         }
 
-        offset += header_len + field_len;
+        offset = field_end;
     }
 
     Ok(PasswdModifyRequest {
@@ -436,12 +448,13 @@ impl<S: PasswordStore, A: BrokerAuthorizer> PasswordModifyHandler<S, A> {
                     target = %target_dn,
                     "password modify: user not found"
                 );
+                // NIST IA-2: Return generic error to prevent user enumeration.
                 (
                     ExtendedResponse {
                         result: LdapResult {
-                            result_code: ResultCode::NoSuchObject,
+                            result_code: ResultCode::InsufficientAccessRights,
                             matched_dn: String::new(),
-                            diagnostic_message: "target user not found".into(),
+                            diagnostic_message: "password modify failed".into(),
                         },
                         response_name: None,
                         response_value: None,
@@ -450,7 +463,7 @@ impl<S: PasswordStore, A: BrokerAuthorizer> PasswordModifyHandler<S, A> {
                         broker_dn: bind_info.dn.clone(),
                         target_dn: target_dn.to_string(),
                         success: false,
-                        failure_reason: Some("target user not found".into()),
+                        failure_reason: Some("password modify failed".into()),
                     }),
                 )
             }
@@ -474,7 +487,7 @@ impl<S: PasswordStore, A: BrokerAuthorizer> PasswordModifyHandler<S, A> {
                         broker_dn: bind_info.dn.clone(),
                         target_dn: target_dn.to_string(),
                         success: false,
-                        failure_reason: Some(format!("internal error: {detail}")),
+                        failure_reason: Some("internal error".into()),
                     }),
                 )
             }
