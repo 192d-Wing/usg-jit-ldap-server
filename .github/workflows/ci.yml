@@ -5,6 +5,7 @@ on:
     branches: [main, integration]
   pull_request:
     branches: [main]
+  workflow_call:
 
 env:
   CARGO_TERM_COLOR: always
@@ -139,20 +140,3 @@ jobs:
           path: "*.cdx.json"
           if-no-files-found: warn
 
-  # ---------------------------------------------------------------
-  # Build release binary (only after all checks pass)
-  # ---------------------------------------------------------------
-  build:
-    name: Build Release
-    runs-on: ubuntu-latest
-    needs: [check, test-unit, test-integration, test-e2e, audit]
-    steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
-      - name: Build release binary
-        run: cargo build --release
-      - uses: actions/upload-artifact@v7
-        with:
-          name: usg-jit-ldap-server
-          path: target/release/usg-jit-ldap-server

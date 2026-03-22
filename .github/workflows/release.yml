@@ -1,0 +1,59 @@
+name: Release
+
+on:
+  push:
+    tags: ["v[0-9]+.[0-9]+.[0-9]+"]
+
+env:
+  CARGO_TERM_COLOR: always
+  SQLX_OFFLINE: "true"
+
+permissions:
+  contents: write
+
+jobs:
+  # ---------------------------------------------------------------
+  # Run full CI checks before building release
+  # ---------------------------------------------------------------
+  ci:
+    name: CI
+    uses: ./.github/workflows/ci.yml
+
+  # ---------------------------------------------------------------
+  # Build release binary and create GitHub release
+  # ---------------------------------------------------------------
+  release:
+    name: Release
+    runs-on: ubuntu-latest
+    needs: [ci]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Generate SBOM
+        run: |
+          cargo install cargo-cyclonedx
+          cargo cyclonedx --format json
+
+      - name: Package artifacts
+        run: |
+          mkdir -p dist
+          cp target/release/usg-jit-ldap-server dist/
+          cp LICENSE dist/
+          cp README.md dist/
+          cp -r migrations dist/
+          cp config.example.toml dist/
+          cp *.cdx.json dist/ 2>/dev/null || true
+          tar -czf usg-jit-ldap-server-${{ github.ref_name }}-linux-x86_64.tar.gz -C dist .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            usg-jit-ldap-server-${{ github.ref_name }}-linux-x86_64.tar.gz
