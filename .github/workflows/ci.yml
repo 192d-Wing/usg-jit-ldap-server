@@ -89,6 +89,7 @@ jobs:
             -days 1 -nodes \
             -subj "/CN=ldap-server/O=USG JIT LDAP Test/C=US" \
             -addext "subjectAltName=DNS:ldap-server,IP:127.0.0.1" 2>/dev/null
+          chmod 644 tests/e2e/certs/server.key
       - name: Run e2e test stack
         run: |
           docker compose -f docker-compose.e2e.yml up \
