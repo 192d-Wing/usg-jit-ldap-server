@@ -15,8 +15,8 @@ The threat model uses the STRIDE methodology applied to each major component
 and trust boundary. The analysis covers six components:
 
 | Component | Key Threats | Primary Mitigations |
-|-----------|-------------|---------------------|
-| **LDAPS Listener** (`src/tls.rs`) | TLS downgrade (T-L4), handshake flood (T-L5), certificate spoofing (T-L1) | TLS 1.2+ only, no plaintext, connection rate limiting, rustls (pure-Rust, audited) |
+| ----------- | ------------- | --------------------- |
+| **LDAPS Listener** (`src/tls.rs`) | TLS downgrade (T-L4), handshake flood (T-L5), certificate spoofing (T-L1) | TLS 1.3+ only, no plaintext, connection rate limiting, rustls (pure-Rust, audited) |
 | **Session Handler** (`src/ldap/session.rs`) | State confusion (T-S6), unauthenticated data access (T-S4), malformed PDU (T-S2) | Rust enum state machine with exhaustive match, Bind-before-Search enforcement, strict BER parser with size limits |
 | **Bind Handler** (`src/ldap/bind.rs`) | Credential stuffing (T-B1), timing side-channel (T-B3), password leak from memory (T-B4) | Per-DN/IP rate limiting, constant-time hash comparison, zeroize crate for password material |
 | **Search Handler** (`src/ldap/search.rs`) | Data exfiltration (T-Q1), enumeration (T-Q3), complex filter DoS (T-Q2) | Schema-level attribute filtering, size limits, filter depth limits, all searches audited |
@@ -48,6 +48,7 @@ After all implemented mitigations, the following residual risks remain:
 ephemeral passwords for any user within the configured TTL window.
 
 **Current Mitigations:**
+
 - Password TTL limits the window of validity (default: 8 hours)
 - All password issuance is audit-logged with broker identity and target DN
 - Broker DN must be explicitly configured in `security.broker_dns`
@@ -65,6 +66,7 @@ period, site-local identity data becomes stale. Disabled accounts may remain
 active, and new accounts may not be available.
 
 **Current Mitigations:**
+
 - Replication health monitoring with staleness detection
 - Configurable staleness thresholds
 - Operational alerts on sync failure
@@ -82,6 +84,7 @@ on host clock accuracy. Significant clock skew could extend password validity
 or create gaps in audit timelines.
 
 **Current Mitigations:**
+
 - TTL enforcement uses server-side UTC timestamps
 - Operational documentation requires NTP configuration
 - Database `created_at` provides secondary timestamp
@@ -97,6 +100,7 @@ password TTL by the same amount.
 tokio) could undermine specific controls.
 
 **Current Mitigations:**
+
 - Minimal dependency set (ADR-006)
 - `cargo audit` for known vulnerability scanning
 - `cargo deny` for license and advisory policy enforcement
@@ -113,6 +117,7 @@ publication.
 or delete audit records in `runtime.audit_queue`.
 
 **Current Mitigations:**
+
 - LDAP service role has INSERT-only on audit tables (no UPDATE/DELETE)
 - Audit events are also emitted via tracing (stdout) for independent capture
 - SIEM forwarding provides an off-host copy of audit data
@@ -128,6 +133,7 @@ on-host audit records. Off-host SIEM copies provide compensating detection.
 confidentiality or integrity.
 
 **Current Mitigations:**
+
 - rustls is a pure-Rust, formally audited TLS implementation
 - ring is a widely reviewed cryptographic library
 - Both are actively maintained with rapid security response
@@ -142,7 +148,7 @@ confidentiality or integrity.
 ## 3. Risk Acceptance Recommendations
 
 | Risk | Recommendation | Rationale |
-|------|---------------|-----------|
+|------ | --------------- | -----------|
 | R-1 (Broker Compromise) | **Accept with monitoring** | TTL enforcement and audit logging provide detection and bounded impact. Broker security is the primary mitigation and is outside the LDAP server boundary. |
 | R-2 (Stale Replication) | **Accept with operational controls** | Replication health monitoring and alerting provide timely detection. The staleness window is bounded by the monitoring threshold. |
 | R-3 (NTP Desynchronization) | **Accept** | Standard operational practice (NTP) mitigates this. Impact is proportional to clock skew, which is typically sub-second with NTP. |

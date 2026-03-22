@@ -114,12 +114,13 @@ the BER/ASN.1 codec, which is the primary untrusted input boundary.
 | `test_revoked_password_rejected` | `tests/password_expiry.rs:42` | Revoked/used passwords are rejected |
 | `test_tls_acceptor_builds_with_valid_certs` | `tests/tls_enforcement.rs:33` | TLS acceptor initializes with valid certificate material |
 | `test_tls_acceptor_fails_without_cert_file` | `tests/tls_enforcement.rs:51` | TLS acceptor fails without certificate file (SC-8 fail-closed) |
-| `test_tls_12_rejected` | `tests/tls_enforcement.rs:63` | TLS 1.2 connections are rejected when minimum is set to 1.3 |
+| `test_tls_12_rejected` | `tests/tls_enforcement.rs:63` | TLS 1.2 connections are rejected (SC-13 enforcement) |
 | `test_tls_10_rejected` | `tests/tls_enforcement.rs:77` | TLS 1.0 connections are rejected (SC-13 enforcement) |
 
 ### Test Infrastructure
 
 Shared test utilities in `tests/common/mod.rs` provide:
+
 - `setup_test_pool()` — Creates an isolated PostgreSQL connection pool
 - `insert_test_user()` — Inserts a test user into the identity schema
 - `insert_ephemeral_password()` — Creates a test credential with configurable TTL
@@ -160,6 +161,7 @@ advisories published in the RustSec Advisory Database.
 **Configuration file:** `deny.toml` (repository root)
 
 `cargo deny` enforces:
+
 - **Advisories:** Rejects dependencies with known vulnerabilities
 - **Licenses:** Ensures all dependencies use approved open-source licenses
 - **Bans:** Blocks specific crates that are prohibited by policy

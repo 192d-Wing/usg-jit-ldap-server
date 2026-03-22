@@ -8,7 +8,7 @@ evidence.
 ## Document Index
 
 | Document | Location | Purpose |
-|----------|----------|---------|
+| ---------- | ---------- | --------- |
 | System Security Plan Inputs | [system-security-plan-inputs.md](system-security-plan-inputs.md) | SSP-ready control implementation statements |
 | NIST Traceability Matrix | [nist-traceability-matrix.md](nist-traceability-matrix.md) | Control-to-code mapping with file:line references |
 | Risk Assessment Inputs | [risk-assessment-inputs.md](risk-assessment-inputs.md) | Threat model, residual risks, mitigations |
@@ -17,7 +17,7 @@ evidence.
 ## Supporting Documentation
 
 | Document | Location |
-|----------|----------|
+| ---------- | ---------- |
 | Architecture Overview | [../architecture/README.md](../architecture/README.md) |
 | Threat Model | [../architecture/threat-model.md](../architecture/threat-model.md) |
 | Trust Boundaries | [../architecture/trust-boundaries.md](../architecture/trust-boundaries.md) |
@@ -33,7 +33,7 @@ evidence.
 ## Operational Runbooks
 
 | Document | Location |
-|----------|----------|
+| ---------- | ---------- |
 | Operations Overview | [../operations/README.md](../operations/README.md) |
 | Audit Forwarding | [../operations/audit-forwarding.md](../operations/audit-forwarding.md) |
 | Certificate Rotation | [../operations/certificate-rotation.md](../operations/certificate-rotation.md) |
@@ -45,7 +45,7 @@ evidence.
 ## Deployment Artifacts
 
 | Artifact | Location |
-|----------|----------|
+| ---------- | ---------- |
 | Dockerfile | [../../Dockerfile](../../Dockerfile) |
 | Deployment Guide | [../deployment/](../deployment/) |
 | systemd Unit | [../../deploy/](../../deploy/) |

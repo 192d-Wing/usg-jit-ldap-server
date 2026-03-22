@@ -28,6 +28,7 @@ issues ephemeral passwords that are stored site-locally and never replicated.
 ### Authorization Boundary
 
 The authorization boundary encompasses:
+
 - The LDAP server process (Rust binary)
 - The site-local PostgreSQL database (identity and runtime schemas)
 - The TLS listener on port 636
@@ -39,7 +40,7 @@ operating system, PKI certificate authority, and client applications (PAM, SSH).
 
 ### Data Flows
 
-1. **Client to LDAP Server (LDAPS):** TLS 1.2/1.3 on port 636. Clients send
+1. **Client to LDAP Server (LDAPS):** TLS 1.3 on port 636. Clients send
    Bind requests (DN + password) and Search requests. Server returns Bind
    responses and Search result entries. All traffic is encrypted.
 
@@ -170,8 +171,8 @@ parameters have secure defaults.
 
 All security-relevant configuration settings are validated at startup. The
 `validate()` function enforces: port must be 636 unless explicitly overridden,
-TLS certificate and key files must exist, TLS minimum version must be 1.2 or
-1.3, database URL must not be empty, and rate limit parameters must be positive.
+TLS certificate and key files must exist, TLS minimum version must be 1.3,
+database URL must not be empty, and rate limit parameters must be positive.
 The server refuses to start if any validation fails. Configuration is immutable
 after startup -- there is no runtime reconfiguration of security settings.
 
@@ -255,7 +256,7 @@ resource exhaustion from complex searches.
 
 ### SC-8: Transmission Confidentiality and Integrity
 
-All LDAP communication is encrypted via TLS 1.2+ with AEAD cipher suites
+All LDAP communication is encrypted via TLS 1.3+ with AEAD cipher suites
 (AES-256-GCM or ChaCha20-Poly1305). There is no plaintext code path -- the TCP
 listener is wrapped in a TLS acceptor before any LDAP processing occurs.
 Connections that fail TLS negotiation are dropped immediately. The replication
@@ -271,7 +272,7 @@ Certificate rotation procedures are documented in the operational security guide
 
 ### SC-13: Cryptographic Protection
 
-The system uses: TLS 1.2/1.3 with AES-256-GCM or ChaCha20-Poly1305 for
+The system uses: TLS 1.3 with AES-256-GCM or ChaCha20-Poly1305 for
 transport (via rustls with the ring provider), Argon2id for password hashing,
 SHA-256 for replication payload integrity, and ECDHE for key exchange. All
 cryptographic operations use vetted, audited libraries. No custom cryptographic
