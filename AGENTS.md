@@ -39,18 +39,22 @@ Merge into `integration` branch, then into `main`:
 ## Parallelization Strategy
 
 **Wave 1 (parallel):** DevOps + Architecture
+
 - No code dependencies between them
 - DevOps creates skeleton; Architecture creates design docs
 
 **Wave 2 (parallel):** Data + Protocol + Replication design
+
 - All depend on Architecture being done
 - Minimal code overlap between them
 
 **Wave 3 (sequential):** Runtime
+
 - Wires together Data + Protocol modules
 - Needs their interfaces defined
 
 **Wave 4 (final):** Security
+
 - Reviews and annotates all other work
 - Adds NIST control mapping comments
 - Final compliance pass
@@ -58,17 +62,21 @@ Merge into `integration` branch, then into `main`:
 ## Git Strategy
 
 ### Branch Structure
+
 - `main` — stable, merged, reviewed code
 - `integration` — staging branch for ordered merges
 - `feat/*` — one per agent workstream
 
 ### Worktree Layout
+
 Each agent works in an isolated worktree under `/private/tmp/`:
+
 - Prevents merge conflicts during parallel development
 - Each worktree has its own working directory
 - Agents commit independently to their branches
 
 ### Merge Protocol
+
 1. Each agent commits to its `feat/*` branch in its worktree
 2. Create `integration` branch from `main`
 3. Merge branches in dependency order (see above)
