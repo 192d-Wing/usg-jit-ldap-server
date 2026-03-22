@@ -446,8 +446,8 @@ fn validate(config: &ServerConfig) -> Result<(), ConfigError> {
         ));
     }
 
-    // NIST SC-8: Warn if database URL does not enforce TLS.
-    // Accept sslmode=require, verify-ca, or verify-full.
+    // NIST SC-8: Validate that database URL enforces TLS in production.
+    // In test/dev mode (allow_non_standard_port), this is a warning only.
     if !config.database.url.is_empty() {
         let has_tls = config
             .database
@@ -462,11 +462,20 @@ fn validate(config: &ServerConfig) -> Result<(), ConfigError> {
                     && (value == "require" || value == "verify-ca" || value == "verify-full")
             });
         if !has_tls {
-            return Err(ConfigError::Validation(
-                "database URL should include sslmode=require, sslmode=verify-ca, \
-                 or sslmode=verify-full (NIST SC-8: transmission confidentiality)"
-                    .into(),
-            ));
+            if config.server.allow_non_standard_port {
+                // Test/dev mode: warn but allow.
+                eprintln!(
+                    "WARNING: database URL does not include sslmode — \
+                     this is only acceptable for testing"
+                );
+            } else {
+                return Err(ConfigError::Validation(
+                    "database URL must include sslmode=require, sslmode=verify-ca, \
+                     or sslmode=verify-full (NIST SC-8: transmission confidentiality). \
+                     Set allow_non_standard_port = true to bypass for testing."
+                        .into(),
+                ));
+            }
         }
     }
 

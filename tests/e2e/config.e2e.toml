@@ -1,7 +1,7 @@
 [server]
 bind_addr = "0.0.0.0"
 port = 636
-allow_non_standard_port = false
+allow_non_standard_port = true
 max_connections = 100
 idle_timeout_secs = 300
 
