@@ -2,7 +2,7 @@
 
 A minimal, security-focused LDAP server in Rust designed for JIT (Just-In-Time) password broker environments.
 
-![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/192d-Wing/usg-jit-ldap-server/ci.yml?style=for-the-badge&logo=github)
+[![GitHub Actions Workflow Status](https://img.shields.io/github/actions/workflow/status/192d-Wing/usg-jit-ldap-server/ci.yml?style=for-the-badge&logo=github)](https://github.com/192d-Wing/usg-jit-ldap-server/actions/workflows/ci.yml)
 
 ## Overview
 
