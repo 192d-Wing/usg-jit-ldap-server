@@ -15,12 +15,11 @@
 // - SC-13 (Cryptographic Protection): Only FIPS-compatible ciphersuites and
 //   TLS 1.2+ are permitted. Weak protocols and ciphers are not available.
 
-use std::fs::File;
-use std::io::BufReader;
 use std::sync::Arc;
 
 use rustls::ServerConfig;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use rustls_pki_types::pem::PemObject;
 use thiserror::Error;
 use tokio_rustls::TlsAcceptor;
 
@@ -35,13 +34,13 @@ pub enum TlsError {
     #[error("failed to read certificate file '{path}': {source}")]
     CertFileRead {
         path: String,
-        source: std::io::Error,
+        source: rustls_pki_types::pem::Error,
     },
 
     #[error("failed to read private key file '{path}': {source}")]
     KeyFileRead {
         path: String,
-        source: std::io::Error,
+        source: rustls_pki_types::pem::Error,
     },
 
     #[error("no certificates found in '{0}'")]
@@ -116,13 +115,11 @@ pub fn build_tls_acceptor(config: &TlsSettings) -> Result<TlsAcceptor, TlsError>
 
 /// Load PEM-encoded certificates from a file.
 fn load_certificates(path: &str) -> Result<Vec<CertificateDer<'static>>, TlsError> {
-    let file = File::open(path).map_err(|e| TlsError::CertFileRead {
-        path: path.to_string(),
-        source: e,
-    })?;
-    let mut reader = BufReader::new(file);
-
-    let certs: Vec<CertificateDer<'static>> = rustls_pemfile::certs(&mut reader)
+    let certs: Vec<CertificateDer<'static>> = CertificateDer::pem_file_iter(path)
+        .map_err(|e| TlsError::CertFileRead {
+            path: path.to_string(),
+            source: e,
+        })?
         .collect::<Result<Vec<_>, _>>()
         .map_err(|e| TlsError::CertFileRead {
             path: path.to_string(),
@@ -134,48 +131,13 @@ fn load_certificates(path: &str) -> Result<Vec<CertificateDer<'static>>, TlsErro
 
 /// Load a PEM-encoded private key from a file.
 ///
-/// Supports RSA, PKCS8, and EC key formats.
+/// Supports RSA (PKCS1), PKCS8, and EC (SEC1) key formats.
+/// Uses `rustls-pki-types` PEM parsing (replacement for unmaintained rustls-pemfile).
 fn load_private_key(path: &str) -> Result<PrivateKeyDer<'static>, TlsError> {
-    let file = File::open(path).map_err(|e| TlsError::KeyFileRead {
+    PrivateKeyDer::from_pem_file(path).map_err(|e| TlsError::KeyFileRead {
         path: path.to_string(),
         source: e,
-    })?;
-    let mut reader = BufReader::new(file);
-
-    let mut keys: Vec<PrivateKeyDer<'static>> = Vec::new();
-
-    // Try all supported key formats.
-    // rustls_pemfile v2 provides an iterator that yields items.
-    loop {
-        match rustls_pemfile::read_one(&mut reader) {
-            Ok(Some(rustls_pemfile::Item::Pkcs1Key(key))) => {
-                keys.push(PrivateKeyDer::Pkcs1(key));
-            }
-            Ok(Some(rustls_pemfile::Item::Pkcs8Key(key))) => {
-                keys.push(PrivateKeyDer::Pkcs8(key));
-            }
-            Ok(Some(rustls_pemfile::Item::Sec1Key(key))) => {
-                keys.push(PrivateKeyDer::Sec1(key));
-            }
-            Ok(Some(_)) => {
-                // Skip non-key items (certificates, CRLs, etc.)
-                continue;
-            }
-            Ok(None) => break,
-            Err(e) => {
-                return Err(TlsError::KeyFileRead {
-                    path: path.to_string(),
-                    source: e,
-                });
-            }
-        }
-    }
-
-    match keys.len() {
-        0 => Err(TlsError::NoPrivateKey(path.to_string())),
-        1 => Ok(keys.remove(0)),
-        _ => Err(TlsError::MultiplePrivateKeys(path.to_string())),
-    }
+    })
 }
 
 /// Build a rustls ServerConfig with secure defaults.
