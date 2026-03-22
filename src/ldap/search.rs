@@ -148,9 +148,7 @@ impl<B: SearchBackend> SearchHandler<B> {
             );
         }
 
-        let bound_dn = session
-            .bind_info()
-            .map_or("", |info| info.dn.as_str());
+        let bound_dn = session.bind_info().map_or("", |info| info.dn.as_str());
 
         // Compute effective size limit: the lesser of client and server limits.
         // A client limit of 0 means "no client limit" — use the server limit.
@@ -239,7 +237,7 @@ impl SearchBackend for PlaceholderSearchBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ldap::codec::{AuthChoice, BindRequest, DerefAliases, LdapMessage, ProtocolOp};
+    use crate::ldap::codec::DerefAliases;
     use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
     fn test_addr() -> SocketAddr {

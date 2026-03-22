@@ -25,8 +25,8 @@ use std::sync::Arc;
 
 use sqlx::PgPool;
 
-use crate::audit::events::{AuditEvent, BindOutcome};
 use crate::audit::AuditLogger;
+use crate::audit::events::{AuditEvent, BindOutcome};
 use crate::ldap::bind::{AuthResult, Authenticator};
 
 use rate_limit::{RateLimiter, SearchRateLimiter};
@@ -96,11 +96,7 @@ impl Authenticator for DatabaseAuthenticator {
             // This MUST happen before any password hash computation to prevent
             // CPU exhaustion via repeated argon2 evaluations.
             if let Err(_e) = self.rate_limiter.check_and_increment(dn).await {
-                let event = AuditEvent::bind_attempt(
-                    self.peer_addr,
-                    dn,
-                    BindOutcome::RateLimited,
-                );
+                let event = AuditEvent::bind_attempt(self.peer_addr, dn, BindOutcome::RateLimited);
                 self.audit.log(event).await;
                 return AuthResult::AccountLocked;
             }
@@ -155,11 +151,8 @@ impl Authenticator for DatabaseAuthenticator {
             if !user.enabled {
                 tracing::warn!(dn = %dn, "bind: account disabled");
                 self.record_failure(dn, "account_disabled").await;
-                let event = AuditEvent::bind_attempt(
-                    self.peer_addr,
-                    dn,
-                    BindOutcome::InvalidCredentials,
-                );
+                let event =
+                    AuditEvent::bind_attempt(self.peer_addr, dn, BindOutcome::InvalidCredentials);
                 self.audit.log(event).await;
                 return AuthResult::InvalidCredentials;
             }
@@ -232,35 +225,31 @@ impl Authenticator for DatabaseAuthenticator {
 
             // Verify password against stored hash.
             // NIST IA-5: Password material is zeroized after verification.
-            let verified = match password::verify_password(
-                password_bytes.to_vec(),
-                &credential.password_hash,
-            ) {
-                Ok(v) => v,
-                Err(e) => {
-                    let _ = tx.rollback().await;
-                    tracing::error!(dn = %dn, error = %e, "bind: password verification error");
-                    let event = AuditEvent::bind_attempt(
-                        self.peer_addr,
-                        dn,
-                        BindOutcome::InternalError {
-                            detail: "verification error".into(),
-                        },
-                    );
-                    self.audit.log(event).await;
-                    return AuthResult::InternalError("verification error".into());
-                }
-            };
+            let verified =
+                match password::verify_password(password_bytes.to_vec(), &credential.password_hash)
+                {
+                    Ok(v) => v,
+                    Err(e) => {
+                        let _ = tx.rollback().await;
+                        tracing::error!(dn = %dn, error = %e, "bind: password verification error");
+                        let event = AuditEvent::bind_attempt(
+                            self.peer_addr,
+                            dn,
+                            BindOutcome::InternalError {
+                                detail: "verification error".into(),
+                            },
+                        );
+                        self.audit.log(event).await;
+                        return AuthResult::InternalError("verification error".into());
+                    }
+                };
 
             if !verified {
                 let _ = tx.rollback().await;
                 tracing::warn!(dn = %dn, peer = %self.peer_addr, "bind: invalid credentials");
                 self.record_failure(dn, "invalid_password").await;
-                let event = AuditEvent::bind_attempt(
-                    self.peer_addr,
-                    dn,
-                    BindOutcome::InvalidCredentials,
-                );
+                let event =
+                    AuditEvent::bind_attempt(self.peer_addr, dn, BindOutcome::InvalidCredentials);
                 // NIST AU-5: In fail-closed mode, reject the bind if audit
                 // persistence fails for credential failure events too.
                 if let Err(e) = self.audit.log_checked(event).await {
@@ -314,11 +303,7 @@ impl Authenticator for DatabaseAuthenticator {
 
             // Step 6: Record success.
             self.record_success(dn).await;
-            let event = AuditEvent::bind_attempt(
-                self.peer_addr,
-                dn,
-                BindOutcome::Success,
-            );
+            let event = AuditEvent::bind_attempt(self.peer_addr, dn, BindOutcome::Success);
             // NIST AU-5: In fail-closed mode, reject the bind if audit
             // persistence fails. This ensures every successful authentication
             // has a durable audit record.
@@ -404,8 +389,16 @@ pub struct DatabaseSearchBackend {
 
 impl DatabaseSearchBackend {
     /// Create a new search backend.
-    pub fn new(pool: Arc<PgPool>, search_rate_limiter: SearchRateLimiter, peer_addr: SocketAddr) -> Self {
-        Self { pool, search_rate_limiter, peer_addr }
+    pub fn new(
+        pool: Arc<PgPool>,
+        search_rate_limiter: SearchRateLimiter,
+        peer_addr: SocketAddr,
+    ) -> Self {
+        Self {
+            pool,
+            search_rate_limiter,
+            peer_addr,
+        }
     }
 }
 
@@ -422,7 +415,12 @@ impl SearchBackend for DatabaseSearchBackend {
         Box::pin(async move {
             // NIST SI-10: Per-IP search rate limit check.
             let source_ip = self.peer_addr.ip().to_string();
-            if self.search_rate_limiter.check_and_increment(&source_ip).await.is_err() {
+            if self
+                .search_rate_limiter
+                .check_and_increment(&source_ip)
+                .await
+                .is_err()
+            {
                 return SearchOutcome {
                     entries: Vec::new(),
                     result_code: ResultCode::Busy,
@@ -441,7 +439,11 @@ impl SearchBackend for DatabaseSearchBackend {
             // For v1, we support a subset: equality on cn/uid/mail, presence of objectClass.
             let (username_filter, email_filter) = extract_simple_filters(filter);
 
-            let effective_limit = if size_limit <= 0 { 100i64 } else { size_limit as i64 };
+            let effective_limit = if size_limit <= 0 {
+                100i64
+            } else {
+                size_limit as i64
+            };
 
             // NIST AC-6: Scope enforcement — limit search breadth to what the
             // client explicitly requested. BaseObject returns only the exact DN,
@@ -562,41 +564,56 @@ impl SearchBackend for DatabaseSearchBackend {
                     let mut attrs = Vec::new();
                     let return_all = requested_attributes.is_empty();
 
-                    if return_all || requested_attributes.iter().any(|a| a.eq_ignore_ascii_case("cn")) {
+                    if return_all
+                        || requested_attributes
+                            .iter()
+                            .any(|a| a.eq_ignore_ascii_case("cn"))
+                    {
                         attrs.push(PartialAttribute {
                             attr_type: "cn".to_string(),
                             values: vec![row.username.as_bytes().to_vec()],
                         });
                     }
-                    if return_all || requested_attributes.iter().any(|a| a.eq_ignore_ascii_case("uid")) {
+                    if return_all
+                        || requested_attributes
+                            .iter()
+                            .any(|a| a.eq_ignore_ascii_case("uid"))
+                    {
                         attrs.push(PartialAttribute {
                             attr_type: "uid".to_string(),
                             values: vec![row.username.as_bytes().to_vec()],
                         });
                     }
-                    if return_all || requested_attributes.iter().any(|a| a.eq_ignore_ascii_case("displayName")) {
-                        if let Some(ref dn) = row.display_name {
-                            attrs.push(PartialAttribute {
-                                attr_type: "displayName".to_string(),
-                                values: vec![dn.as_bytes().to_vec()],
-                            });
-                        }
+                    if (return_all
+                        || requested_attributes
+                            .iter()
+                            .any(|a| a.eq_ignore_ascii_case("displayName")))
+                        && let Some(ref dn) = row.display_name
+                    {
+                        attrs.push(PartialAttribute {
+                            attr_type: "displayName".to_string(),
+                            values: vec![dn.as_bytes().to_vec()],
+                        });
                     }
-                    if return_all || requested_attributes.iter().any(|a| a.eq_ignore_ascii_case("mail")) {
-                        if let Some(ref email) = row.email {
-                            attrs.push(PartialAttribute {
-                                attr_type: "mail".to_string(),
-                                values: vec![email.as_bytes().to_vec()],
-                            });
-                        }
+                    if (return_all
+                        || requested_attributes
+                            .iter()
+                            .any(|a| a.eq_ignore_ascii_case("mail")))
+                        && let Some(ref email) = row.email
+                    {
+                        attrs.push(PartialAttribute {
+                            attr_type: "mail".to_string(),
+                            values: vec![email.as_bytes().to_vec()],
+                        });
                     }
-                    if return_all || requested_attributes.iter().any(|a| a.eq_ignore_ascii_case("objectClass")) {
+                    if return_all
+                        || requested_attributes
+                            .iter()
+                            .any(|a| a.eq_ignore_ascii_case("objectClass"))
+                    {
                         attrs.push(PartialAttribute {
                             attr_type: "objectClass".to_string(),
-                            values: vec![
-                                b"top".to_vec(),
-                                b"inetOrgPerson".to_vec(),
-                            ],
+                            values: vec![b"top".to_vec(), b"inetOrgPerson".to_vec()],
                         });
                     }
 
@@ -882,19 +899,13 @@ mod tests {
 
     #[test]
     fn test_escape_like_wildcards_backslash() {
-        assert_eq!(
-            escape_like_wildcards("cn=test\\value"),
-            "cn=test\\\\value"
-        );
+        assert_eq!(escape_like_wildcards("cn=test\\value"), "cn=test\\\\value");
     }
 
     #[test]
     fn test_escape_like_wildcards_all_special() {
         // Backslash must be escaped first to avoid double-escaping.
-        assert_eq!(
-            escape_like_wildcards("cn=a\\b%c_d"),
-            "cn=a\\\\b\\%c\\_d"
-        );
+        assert_eq!(escape_like_wildcards("cn=a\\b%c_d"), "cn=a\\\\b\\%c\\_d");
     }
 
     // -----------------------------------------------------------------------
@@ -931,7 +942,10 @@ mod tests {
     fn test_scope_base_object_exact_match() {
         let base = "ou=users,dc=example,dc=com";
         assert!(matches_base_object("ou=users,dc=example,dc=com", base));
-        assert!(!matches_base_object("cn=alice,ou=users,dc=example,dc=com", base));
+        assert!(!matches_base_object(
+            "cn=alice,ou=users,dc=example,dc=com",
+            base
+        ));
         assert!(!matches_base_object("dc=example,dc=com", base));
     }
 
@@ -939,8 +953,14 @@ mod tests {
     fn test_scope_single_level_immediate_children() {
         let base = "ou=users,dc=example,dc=com";
         // Direct child: one RDN above base.
-        assert!(matches_single_level("cn=alice,ou=users,dc=example,dc=com", base));
-        assert!(matches_single_level("cn=bob,ou=users,dc=example,dc=com", base));
+        assert!(matches_single_level(
+            "cn=alice,ou=users,dc=example,dc=com",
+            base
+        ));
+        assert!(matches_single_level(
+            "cn=bob,ou=users,dc=example,dc=com",
+            base
+        ));
         // NOT a direct child: two RDNs above base.
         assert!(!matches_single_level(
             "cn=alice,ou=eng,ou=users,dc=example,dc=com",
@@ -956,14 +976,20 @@ mod tests {
         // Base itself.
         assert!(matches_whole_subtree("ou=users,dc=example,dc=com", base));
         // Direct child.
-        assert!(matches_whole_subtree("cn=alice,ou=users,dc=example,dc=com", base));
+        assert!(matches_whole_subtree(
+            "cn=alice,ou=users,dc=example,dc=com",
+            base
+        ));
         // Deeply nested descendant.
         assert!(matches_whole_subtree(
             "cn=alice,ou=eng,ou=users,dc=example,dc=com",
             base
         ));
         // Unrelated DN.
-        assert!(!matches_whole_subtree("cn=alice,ou=admins,dc=example,dc=com", base));
+        assert!(!matches_whole_subtree(
+            "cn=alice,ou=admins,dc=example,dc=com",
+            base
+        ));
     }
 
     #[test]

@@ -34,7 +34,10 @@ async fn test_concurrent_bind_same_password() {
                 54321,
             );
             let auth = usg_jit_ldap_server::auth::DatabaseAuthenticator::new(
-                pool, rate_limiter, audit, peer,
+                pool,
+                rate_limiter,
+                audit,
+                peer,
             );
             auth.authenticate(&dn, b"one-time-pass").await
         }));

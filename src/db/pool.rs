@@ -6,8 +6,8 @@
 //! NIST CM-6: configuration management — pool sizing and connection parameters
 //! are externalized and validated at startup.
 
-use sqlx::postgres::PgPoolOptions;
 use sqlx::PgPool;
+use sqlx::postgres::PgPoolOptions;
 use tracing::{info, warn};
 
 use super::DbResult;

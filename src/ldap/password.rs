@@ -20,9 +20,7 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use super::codec::{
-    CodecError, ExtendedRequest, ExtendedResponse, LdapResult, ResultCode,
-};
+use super::codec::{CodecError, ExtendedRequest, ExtendedResponse, LdapResult, ResultCode};
 use super::session::LdapSession;
 
 // ---------------------------------------------------------------------------
@@ -90,8 +88,7 @@ pub fn parse_passwd_modify_request(value: &[u8]) -> Result<PasswdModifyRequest, 
             0x80 => {
                 // [0] userIdentity
                 user_identity = Some(
-                    String::from_utf8(field_value.to_vec())
-                        .map_err(|_| CodecError::InvalidUtf8)?,
+                    String::from_utf8(field_value.to_vec()).map_err(|_| CodecError::InvalidUtf8)?,
                 );
             }
             0x81 => {
@@ -104,7 +101,9 @@ pub fn parse_passwd_modify_request(value: &[u8]) -> Result<PasswdModifyRequest, 
             }
             _ => {
                 // Unknown field — skip per forward-compatibility.
-                tracing::debug!("ignoring unknown PasswdModifyRequestValue field tag 0x{field_tag:02x}");
+                tracing::debug!(
+                    "ignoring unknown PasswdModifyRequestValue field tag 0x{field_tag:02x}"
+                );
             }
         }
 
@@ -233,15 +232,18 @@ impl<S: PasswordStore, A: BrokerAuthorizer> PasswordModifyHandler<S, A> {
                 received_oid = %req.request_name,
                 "password modify: OID mismatch"
             );
-            return (ExtendedResponse {
-                result: LdapResult {
-                    result_code: ResultCode::ProtocolError,
-                    matched_dn: String::new(),
-                    diagnostic_message: "unexpected OID for password modify".into(),
+            return (
+                ExtendedResponse {
+                    result: LdapResult {
+                        result_code: ResultCode::ProtocolError,
+                        matched_dn: String::new(),
+                        diagnostic_message: "unexpected OID for password modify".into(),
+                    },
+                    response_name: None,
+                    response_value: None,
                 },
-                response_name: None,
-                response_value: None,
-            }, None);
+                None,
+            );
         }
 
         // NIST AC-3: Verify the session is bound.
@@ -252,15 +254,18 @@ impl<S: PasswordStore, A: BrokerAuthorizer> PasswordModifyHandler<S, A> {
                     peer = %session.peer_addr(),
                     "password modify rejected: not bound"
                 );
-                return (ExtendedResponse {
-                    result: LdapResult {
-                        result_code: ResultCode::OperationsError,
-                        matched_dn: String::new(),
-                        diagnostic_message: "bind required".into(),
+                return (
+                    ExtendedResponse {
+                        result: LdapResult {
+                            result_code: ResultCode::OperationsError,
+                            matched_dn: String::new(),
+                            diagnostic_message: "bind required".into(),
+                        },
+                        response_name: None,
+                        response_value: None,
                     },
-                    response_name: None,
-                    response_value: None,
-                }, None);
+                    None,
+                );
             }
         };
 
@@ -271,40 +276,46 @@ impl<S: PasswordStore, A: BrokerAuthorizer> PasswordModifyHandler<S, A> {
                 dn = %bind_info.dn,
                 "password modify rejected: not a broker"
             );
-            return (ExtendedResponse {
-                result: LdapResult {
-                    result_code: ResultCode::InsufficientAccessRights,
-                    matched_dn: String::new(),
-                    diagnostic_message: "only authorized brokers may modify passwords".into(),
+            return (
+                ExtendedResponse {
+                    result: LdapResult {
+                        result_code: ResultCode::InsufficientAccessRights,
+                        matched_dn: String::new(),
+                        diagnostic_message: "only authorized brokers may modify passwords".into(),
+                    },
+                    response_name: None,
+                    response_value: None,
                 },
-                response_name: None,
-                response_value: None,
-            }, Some(PasswordModifyAuditInfo {
-                broker_dn: bind_info.dn.clone(),
-                target_dn: String::new(),
-                success: false,
-                failure_reason: Some("not an authorized broker".into()),
-            }));
+                Some(PasswordModifyAuditInfo {
+                    broker_dn: bind_info.dn.clone(),
+                    target_dn: String::new(),
+                    success: false,
+                    failure_reason: Some("not an authorized broker".into()),
+                }),
+            );
         }
 
         // Parse the request value.
         let request_value = match &req.request_value {
             Some(v) => v,
             None => {
-                return (ExtendedResponse {
-                    result: LdapResult {
-                        result_code: ResultCode::ProtocolError,
-                        matched_dn: String::new(),
-                        diagnostic_message: "missing PasswdModifyRequestValue".into(),
+                return (
+                    ExtendedResponse {
+                        result: LdapResult {
+                            result_code: ResultCode::ProtocolError,
+                            matched_dn: String::new(),
+                            diagnostic_message: "missing PasswdModifyRequestValue".into(),
+                        },
+                        response_name: None,
+                        response_value: None,
                     },
-                    response_name: None,
-                    response_value: None,
-                }, Some(PasswordModifyAuditInfo {
-                    broker_dn: bind_info.dn.clone(),
-                    target_dn: String::new(),
-                    success: false,
-                    failure_reason: Some("missing request value".into()),
-                }));
+                    Some(PasswordModifyAuditInfo {
+                        broker_dn: bind_info.dn.clone(),
+                        target_dn: String::new(),
+                        success: false,
+                        failure_reason: Some("missing request value".into()),
+                    }),
+                );
             }
         };
 
@@ -316,22 +327,25 @@ impl<S: PasswordStore, A: BrokerAuthorizer> PasswordModifyHandler<S, A> {
                     error = %e,
                     "password modify: failed to parse request"
                 );
-                return (ExtendedResponse {
-                    result: LdapResult {
-                        result_code: ResultCode::ProtocolError,
-                        matched_dn: String::new(),
-                        // Do not leak internal codec details to the client.
-                        diagnostic_message: "malformed PasswdModifyRequestValue".into(),
+                return (
+                    ExtendedResponse {
+                        result: LdapResult {
+                            result_code: ResultCode::ProtocolError,
+                            matched_dn: String::new(),
+                            // Do not leak internal codec details to the client.
+                            diagnostic_message: "malformed PasswdModifyRequestValue".into(),
+                        },
+                        response_name: None,
+                        response_value: None,
                     },
-                    response_name: None,
-                    response_value: None,
-                }, Some(PasswordModifyAuditInfo {
-                    broker_dn: bind_info.dn.clone(),
-                    target_dn: String::new(),
-                    success: false,
-                    // Detailed error kept in audit logs only.
-                    failure_reason: Some(format!("malformed request: {e}")),
-                }));
+                    Some(PasswordModifyAuditInfo {
+                        broker_dn: bind_info.dn.clone(),
+                        target_dn: String::new(),
+                        success: false,
+                        // Detailed error kept in audit logs only.
+                        failure_reason: Some(format!("malformed request: {e}")),
+                    }),
+                );
             }
         };
 
@@ -339,20 +353,23 @@ impl<S: PasswordStore, A: BrokerAuthorizer> PasswordModifyHandler<S, A> {
         let target_dn = match &parsed.user_identity {
             Some(dn) if !dn.is_empty() => dn.as_str(),
             _ => {
-                return (ExtendedResponse {
-                    result: LdapResult {
-                        result_code: ResultCode::UnwillingToPerform,
-                        matched_dn: String::new(),
-                        diagnostic_message: "userIdentity is required".into(),
+                return (
+                    ExtendedResponse {
+                        result: LdapResult {
+                            result_code: ResultCode::UnwillingToPerform,
+                            matched_dn: String::new(),
+                            diagnostic_message: "userIdentity is required".into(),
+                        },
+                        response_name: None,
+                        response_value: None,
                     },
-                    response_name: None,
-                    response_value: None,
-                }, Some(PasswordModifyAuditInfo {
-                    broker_dn: bind_info.dn.clone(),
-                    target_dn: String::new(),
-                    success: false,
-                    failure_reason: Some("userIdentity is required".into()),
-                }));
+                    Some(PasswordModifyAuditInfo {
+                        broker_dn: bind_info.dn.clone(),
+                        target_dn: String::new(),
+                        success: false,
+                        failure_reason: Some("userIdentity is required".into()),
+                    }),
+                );
             }
         };
 
@@ -360,20 +377,23 @@ impl<S: PasswordStore, A: BrokerAuthorizer> PasswordModifyHandler<S, A> {
         let new_password = match &parsed.new_passwd {
             Some(pw) if !pw.is_empty() => pw.as_slice(),
             _ => {
-                return (ExtendedResponse {
-                    result: LdapResult {
-                        result_code: ResultCode::UnwillingToPerform,
-                        matched_dn: String::new(),
-                        diagnostic_message: "newPasswd is required".into(),
+                return (
+                    ExtendedResponse {
+                        result: LdapResult {
+                            result_code: ResultCode::UnwillingToPerform,
+                            matched_dn: String::new(),
+                            diagnostic_message: "newPasswd is required".into(),
+                        },
+                        response_name: None,
+                        response_value: None,
                     },
-                    response_name: None,
-                    response_value: None,
-                }, Some(PasswordModifyAuditInfo {
-                    broker_dn: bind_info.dn.clone(),
-                    target_dn: target_dn.to_string(),
-                    success: false,
-                    failure_reason: Some("newPasswd is required".into()),
-                }));
+                    Some(PasswordModifyAuditInfo {
+                        broker_dn: bind_info.dn.clone(),
+                        target_dn: target_dn.to_string(),
+                        success: false,
+                        failure_reason: Some("newPasswd is required".into()),
+                    }),
+                );
             }
         };
 
@@ -392,20 +412,23 @@ impl<S: PasswordStore, A: BrokerAuthorizer> PasswordModifyHandler<S, A> {
                     target = %target_dn,
                     "password modified successfully"
                 );
-                (ExtendedResponse {
-                    result: LdapResult {
-                        result_code: ResultCode::Success,
-                        matched_dn: String::new(),
-                        diagnostic_message: String::new(),
+                (
+                    ExtendedResponse {
+                        result: LdapResult {
+                            result_code: ResultCode::Success,
+                            matched_dn: String::new(),
+                            diagnostic_message: String::new(),
+                        },
+                        response_name: None,
+                        response_value: None,
                     },
-                    response_name: None,
-                    response_value: None,
-                }, Some(PasswordModifyAuditInfo {
-                    broker_dn: bind_info.dn.clone(),
-                    target_dn: target_dn.to_string(),
-                    success: true,
-                    failure_reason: None,
-                }))
+                    Some(PasswordModifyAuditInfo {
+                        broker_dn: bind_info.dn.clone(),
+                        target_dn: target_dn.to_string(),
+                        success: true,
+                        failure_reason: None,
+                    }),
+                )
             }
             PasswordModifyResult::UserNotFound => {
                 tracing::warn!(
@@ -413,20 +436,23 @@ impl<S: PasswordStore, A: BrokerAuthorizer> PasswordModifyHandler<S, A> {
                     target = %target_dn,
                     "password modify: user not found"
                 );
-                (ExtendedResponse {
-                    result: LdapResult {
-                        result_code: ResultCode::NoSuchObject,
-                        matched_dn: String::new(),
-                        diagnostic_message: "target user not found".into(),
+                (
+                    ExtendedResponse {
+                        result: LdapResult {
+                            result_code: ResultCode::NoSuchObject,
+                            matched_dn: String::new(),
+                            diagnostic_message: "target user not found".into(),
+                        },
+                        response_name: None,
+                        response_value: None,
                     },
-                    response_name: None,
-                    response_value: None,
-                }, Some(PasswordModifyAuditInfo {
-                    broker_dn: bind_info.dn.clone(),
-                    target_dn: target_dn.to_string(),
-                    success: false,
-                    failure_reason: Some("target user not found".into()),
-                }))
+                    Some(PasswordModifyAuditInfo {
+                        broker_dn: bind_info.dn.clone(),
+                        target_dn: target_dn.to_string(),
+                        success: false,
+                        failure_reason: Some("target user not found".into()),
+                    }),
+                )
             }
             PasswordModifyResult::InternalError(detail) => {
                 tracing::error!(
@@ -434,20 +460,23 @@ impl<S: PasswordStore, A: BrokerAuthorizer> PasswordModifyHandler<S, A> {
                     error = %detail,
                     "password modify: internal error"
                 );
-                (ExtendedResponse {
-                    result: LdapResult {
-                        result_code: ResultCode::Other,
-                        matched_dn: String::new(),
-                        diagnostic_message: "internal server error".into(),
+                (
+                    ExtendedResponse {
+                        result: LdapResult {
+                            result_code: ResultCode::Other,
+                            matched_dn: String::new(),
+                            diagnostic_message: "internal server error".into(),
+                        },
+                        response_name: None,
+                        response_value: None,
                     },
-                    response_name: None,
-                    response_value: None,
-                }, Some(PasswordModifyAuditInfo {
-                    broker_dn: bind_info.dn.clone(),
-                    target_dn: target_dn.to_string(),
-                    success: false,
-                    failure_reason: Some(format!("internal error: {detail}")),
-                }))
+                    Some(PasswordModifyAuditInfo {
+                        broker_dn: bind_info.dn.clone(),
+                        target_dn: target_dn.to_string(),
+                        success: false,
+                        failure_reason: Some(format!("internal error: {detail}")),
+                    }),
+                )
             }
         }
     }
@@ -555,7 +584,10 @@ mod tests {
             )),
         };
         let (resp, audit_info) = handler.handle_password_modify(&req, &session).await;
-        assert_eq!(resp.result.result_code, ResultCode::InsufficientAccessRights);
+        assert_eq!(
+            resp.result.result_code,
+            ResultCode::InsufficientAccessRights
+        );
         let info = audit_info.unwrap();
         assert!(!info.success);
         assert!(info.failure_reason.is_some());

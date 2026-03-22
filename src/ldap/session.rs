@@ -17,8 +17,7 @@ use std::net::SocketAddr;
 use std::time::Instant;
 
 use super::codec::{
-    AuthChoice, BindRequest, BindResponse, LdapMessage, LdapResult,
-    ProtocolOp, ResultCode,
+    AuthChoice, BindRequest, BindResponse, LdapMessage, LdapResult, ProtocolOp, ResultCode,
 };
 
 // ---------------------------------------------------------------------------
@@ -210,17 +209,15 @@ impl LdapSession {
                 // Placeholder: actual extended op dispatch will be wired by LdapHandler.
                 vec![LdapMessage {
                     message_id,
-                    protocol_op: ProtocolOp::ExtendedResponse(
-                        super::codec::ExtendedResponse {
-                            result: LdapResult {
-                                result_code: ResultCode::UnwillingToPerform,
-                                matched_dn: String::new(),
-                                diagnostic_message: "extended operation not yet wired".into(),
-                            },
-                            response_name: None,
-                            response_value: None,
+                    protocol_op: ProtocolOp::ExtendedResponse(super::codec::ExtendedResponse {
+                        result: LdapResult {
+                            result_code: ResultCode::UnwillingToPerform,
+                            matched_dn: String::new(),
+                            diagnostic_message: "extended operation not yet wired".into(),
                         },
-                    ),
+                        response_name: None,
+                        response_value: None,
+                    }),
                 }]
             }
             // Any other operation: unwillingToPerform.
@@ -280,16 +277,18 @@ impl LdapSession {
         let password = match &req.authentication {
             AuthChoice::Simple(pw) => pw,
             // SASL already handled above; defensive return for future variants.
-            _ => return vec![LdapMessage {
-                message_id,
-                protocol_op: ProtocolOp::BindResponse(BindResponse {
-                    result: LdapResult {
-                        result_code: ResultCode::AuthMethodNotSupported,
-                        matched_dn: String::new(),
-                        diagnostic_message: "unsupported authentication method".into(),
-                    },
-                }),
-            }],
+            _ => {
+                return vec![LdapMessage {
+                    message_id,
+                    protocol_op: ProtocolOp::BindResponse(BindResponse {
+                        result: LdapResult {
+                            result_code: ResultCode::AuthMethodNotSupported,
+                            matched_dn: String::new(),
+                            diagnostic_message: "unsupported authentication method".into(),
+                        },
+                    }),
+                }];
+            }
         };
         if req.name.is_empty() || password.is_empty() {
             // NIST IA-2: Anonymous access is explicitly prohibited.

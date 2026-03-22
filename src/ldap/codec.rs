@@ -108,14 +108,14 @@ const TAG_SEQUENCE: u8 = 0x30;
 const TAG_SET: u8 = 0x31;
 
 // Application class tags for LDAP operations (constructed)
-const TAG_BIND_REQUEST: u8 = 0x60;       // [APPLICATION 0] CONSTRUCTED
-const TAG_BIND_RESPONSE: u8 = 0x61;      // [APPLICATION 1] CONSTRUCTED
-const TAG_UNBIND_REQUEST: u8 = 0x42;     // [APPLICATION 2] PRIMITIVE
-const TAG_SEARCH_REQUEST: u8 = 0x63;     // [APPLICATION 3] CONSTRUCTED
+const TAG_BIND_REQUEST: u8 = 0x60; // [APPLICATION 0] CONSTRUCTED
+const TAG_BIND_RESPONSE: u8 = 0x61; // [APPLICATION 1] CONSTRUCTED
+const TAG_UNBIND_REQUEST: u8 = 0x42; // [APPLICATION 2] PRIMITIVE
+const TAG_SEARCH_REQUEST: u8 = 0x63; // [APPLICATION 3] CONSTRUCTED
 const TAG_SEARCH_RESULT_ENTRY: u8 = 0x64; // [APPLICATION 4] CONSTRUCTED
 const TAG_SEARCH_RESULT_DONE: u8 = 0x65; // [APPLICATION 5] CONSTRUCTED
-const TAG_EXTENDED_REQUEST: u8 = 0x77;   // [APPLICATION 23] CONSTRUCTED
-const TAG_EXTENDED_RESPONSE: u8 = 0x78;  // [APPLICATION 24] CONSTRUCTED
+const TAG_EXTENDED_REQUEST: u8 = 0x77; // [APPLICATION 23] CONSTRUCTED
+const TAG_EXTENDED_RESPONSE: u8 = 0x78; // [APPLICATION 24] CONSTRUCTED
 
 // Context-specific tags used within operations
 const TAG_CTX_0: u8 = 0x80; // [0] PRIMITIVE (e.g., simple auth in BindRequest)
@@ -124,7 +124,7 @@ const TAG_CTX_1_CONSTRUCTED: u8 = 0xA1; // [1] CONSTRUCTED (e.g., OR filter)
 const TAG_CTX_2_CONSTRUCTED: u8 = 0xA2; // [2] CONSTRUCTED (e.g., NOT filter)
 const TAG_CTX_3_CONSTRUCTED: u8 = 0xA3; // [3] CONSTRUCTED (e.g., equalityMatch)
 const TAG_CTX_4_CONSTRUCTED: u8 = 0xA4; // [4] CONSTRUCTED (e.g., substrings)
-const TAG_CTX_7: u8 = 0x87;             // [7] PRIMITIVE (e.g., present filter)
+const TAG_CTX_7: u8 = 0x87; // [7] PRIMITIVE (e.g., present filter)
 
 // ---------------------------------------------------------------------------
 // Security limits — NIST SI-10 (Information Input Validation)
@@ -209,7 +209,9 @@ impl SearchScope {
             0 => Ok(Self::BaseObject),
             1 => Ok(Self::SingleLevel),
             2 => Ok(Self::WholeSubtree),
-            _ => Err(CodecError::InvalidFormat(format!("invalid search scope: {v}"))),
+            _ => Err(CodecError::InvalidFormat(format!(
+                "invalid search scope: {v}"
+            ))),
         }
     }
 }
@@ -364,8 +366,7 @@ pub fn encode_integer(val: i64) -> Vec<u8> {
     let mut bytes = val.to_be_bytes().to_vec();
     // Remove leading redundant bytes (keep minimal two's-complement form).
     while bytes.len() > 1 {
-        if (bytes[0] == 0x00 && bytes[1] & 0x80 == 0)
-            || (bytes[0] == 0xFF && bytes[1] & 0x80 != 0)
+        if (bytes[0] == 0x00 && bytes[1] & 0x80 == 0) || (bytes[0] == 0xFF && bytes[1] & 0x80 != 0)
         {
             bytes.remove(0);
         } else {
@@ -384,8 +385,7 @@ pub fn encode_octet_string(val: &[u8]) -> Vec<u8> {
 pub fn encode_enumerated(val: i64) -> Vec<u8> {
     let mut bytes = val.to_be_bytes().to_vec();
     while bytes.len() > 1 {
-        if (bytes[0] == 0x00 && bytes[1] & 0x80 == 0)
-            || (bytes[0] == 0xFF && bytes[1] & 0x80 != 0)
+        if (bytes[0] == 0x00 && bytes[1] & 0x80 == 0) || (bytes[0] == 0xFF && bytes[1] & 0x80 != 0)
         {
             bytes.remove(0);
         } else {
@@ -448,7 +448,11 @@ pub fn decode_tlv(bytes: &[u8]) -> Result<(u8, &[u8], usize)> {
     if bytes.len() < header_len + content_len {
         return Err(CodecError::Truncated);
     }
-    Ok((tag, &bytes[header_len..header_len + content_len], header_len + content_len))
+    Ok((
+        tag,
+        &bytes[header_len..header_len + content_len],
+        header_len + content_len,
+    ))
 }
 
 /// Decode a BER INTEGER from raw value bytes (no tag/length).
@@ -517,29 +521,6 @@ pub fn decode_ldap_string(bytes: &[u8]) -> Result<(String, usize)> {
     let (raw, consumed) = decode_octet_string(bytes)?;
     let s = String::from_utf8(raw).map_err(|_| CodecError::InvalidUtf8)?;
     Ok((s, consumed))
-}
-
-/// Decode a UTF-8 string from raw value bytes with a specific expected tag.
-fn decode_tagged_string(bytes: &[u8], expected_tag: u8) -> Result<(String, usize)> {
-    let (tag, value, consumed) = decode_tlv(bytes)?;
-    if tag != expected_tag {
-        return Err(CodecError::InvalidFormat(format!(
-            "expected tag 0x{expected_tag:02x}, got 0x{tag:02x}"
-        )));
-    }
-    let s = String::from_utf8(value.to_vec()).map_err(|_| CodecError::InvalidUtf8)?;
-    Ok((s, consumed))
-}
-
-/// Decode raw bytes from a TLV with a specific expected tag.
-fn decode_tagged_bytes(bytes: &[u8], expected_tag: u8) -> Result<(Vec<u8>, usize)> {
-    let (tag, value, consumed) = decode_tlv(bytes)?;
-    if tag != expected_tag {
-        return Err(CodecError::InvalidFormat(format!(
-            "expected tag 0x{expected_tag:02x}, got 0x{tag:02x}"
-        )));
-    }
-    Ok((value.to_vec(), consumed))
 }
 
 // ---------------------------------------------------------------------------
@@ -886,7 +867,7 @@ fn decode_substring_filter(value: &[u8]) -> Result<SubstringFilter> {
     while !sub_iter.is_empty() {
         let (stag, sval) = sub_iter.next_tlv()?;
         match stag {
-            0x80 => initial = Some(sval.to_vec()),   // [0] initial
+            0x80 => initial = Some(sval.to_vec()), // [0] initial
             0x81 => {
                 any.push(sval.to_vec());
                 if any.len() > MAX_SUBSTRING_ANY {
@@ -930,8 +911,7 @@ fn decode_extended_request(value: &[u8]) -> Result<ExtendedRequest> {
             "ExtendedRequest requestName expected tag 0x80, got 0x{name_tag:02x}"
         )));
     }
-    let request_name =
-        String::from_utf8(name_val.to_vec()).map_err(|_| CodecError::InvalidUtf8)?;
+    let request_name = String::from_utf8(name_val.to_vec()).map_err(|_| CodecError::InvalidUtf8)?;
 
     // requestValue [1] OPTIONAL
     let request_value = if !iter.is_empty() {
@@ -976,9 +956,10 @@ fn encode_protocol_op(op: &ProtocolOp) -> Result<Vec<u8>> {
         ProtocolOp::UnbindRequest => Ok(encode_tlv(TAG_UNBIND_REQUEST, &[])),
         ProtocolOp::SearchRequest(req) => encode_search_request(req),
         ProtocolOp::SearchResultEntry(entry) => encode_search_result_entry(entry),
-        ProtocolOp::SearchResultDone(result) => {
-            Ok(encode_tlv(TAG_SEARCH_RESULT_DONE, &encode_ldap_result_contents(result)))
-        }
+        ProtocolOp::SearchResultDone(result) => Ok(encode_tlv(
+            TAG_SEARCH_RESULT_DONE,
+            &encode_ldap_result_contents(result),
+        )),
         ProtocolOp::ExtendedRequest(req) => encode_extended_request(req),
         ProtocolOp::ExtendedResponse(resp) => encode_extended_response(resp),
     }
@@ -1057,12 +1038,8 @@ fn encode_filter(filter: &Filter) -> Vec<u8> {
             let inner = encode_filter(filter);
             encode_tlv(TAG_CTX_2_CONSTRUCTED, &inner)
         }
-        Filter::EqualityMatch(ava) => {
-            encode_tlv(TAG_CTX_3_CONSTRUCTED, &encode_ava(ava))
-        }
-        Filter::Substrings(sf) => {
-            encode_tlv(TAG_CTX_4_CONSTRUCTED, &encode_substring_filter(sf))
-        }
+        Filter::EqualityMatch(ava) => encode_tlv(TAG_CTX_3_CONSTRUCTED, &encode_ava(ava)),
+        Filter::Substrings(sf) => encode_tlv(TAG_CTX_4_CONSTRUCTED, &encode_substring_filter(sf)),
         Filter::Present(attr) => encode_tlv(TAG_CTX_7, attr.as_bytes()),
         Filter::ApproxMatch(ava) => encode_tlv(0xA8, &encode_ava(ava)),
     }
@@ -1249,8 +1226,8 @@ mod tests {
     fn test_encode_decode_boolean() {
         let t = encode_boolean(true);
         let f = encode_boolean(false);
-        assert_eq!(decode_boolean(&t).unwrap().0, true);
-        assert_eq!(decode_boolean(&f).unwrap().0, false);
+        assert!(decode_boolean(&t).unwrap().0);
+        assert!(!decode_boolean(&f).unwrap().0);
     }
 
     #[test]

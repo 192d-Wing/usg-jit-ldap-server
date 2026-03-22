@@ -82,10 +82,7 @@ impl<'a> RuntimeRepository<'a> {
     /// the identity schema, we fetch the active credential from runtime.
     ///
     /// NIST IA-5: credential retrieval is scoped to a single site's runtime schema.
-    pub async fn find_valid_password(
-        &self,
-        user_id: Uuid,
-    ) -> DbResult<Option<EphemeralPassword>> {
+    pub async fn find_valid_password(&self, user_id: Uuid) -> DbResult<Option<EphemeralPassword>> {
         let password = sqlx::query_as::<_, EphemeralPassword>(
             r#"
             SELECT id, user_id, password_hash, issued_at, expires_at,

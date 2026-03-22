@@ -23,11 +23,7 @@ struct HealthResponse {
 }
 
 /// Start the admin HTTP listener.
-pub async fn start_admin_server(
-    bind_addr: SocketAddr,
-    pool: Arc<PgPool>,
-    start_time: Instant,
-) {
+pub async fn start_admin_server(bind_addr: SocketAddr, pool: Arc<PgPool>, start_time: Instant) {
     let listener = match TcpListener::bind(&bind_addr).await {
         Ok(l) => {
             tracing::info!(addr = %bind_addr, "admin health endpoint listening");
@@ -62,10 +58,7 @@ pub async fn start_admin_server(
 
             // Only handle GET /healthz
             if request.starts_with("GET /healthz") {
-                let db_ok = sqlx::query("SELECT 1")
-                    .execute(pool.as_ref())
-                    .await
-                    .is_ok();
+                let db_ok = sqlx::query("SELECT 1").execute(pool.as_ref()).await.is_ok();
 
                 let health = HealthResponse {
                     status: if db_ok { "ok" } else { "degraded" },

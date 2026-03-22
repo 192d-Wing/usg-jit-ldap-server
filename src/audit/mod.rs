@@ -21,8 +21,8 @@
 
 pub mod events;
 
-use events::AuditEvent;
 use crate::config::AuditFailurePolicy;
+use events::AuditEvent;
 use sqlx::PgPool;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -89,19 +89,18 @@ impl AuditLogger {
     /// failures are logged as warnings but Ok(()) is always returned.
     pub async fn log_checked(&self, event: AuditEvent) -> Result<(), AuditError> {
         self.emit_tracing(&event);
-        if self.enabled {
-            if let Some(pool) = &self.pool {
-                if let Err(msg) = self.persist_event_checked(pool, &event).await {
-                    self.failure_count.fetch_add(1, Ordering::Relaxed);
-                    tracing::warn!(
-                        error = %msg,
-                        failures = self.failure_count.load(Ordering::Relaxed),
-                        "audit persistence failure"
-                    );
-                    if self.failure_policy == AuditFailurePolicy::FailClosed {
-                        return Err(AuditError::PersistenceFailed(msg));
-                    }
-                }
+        if self.enabled
+            && let Some(pool) = &self.pool
+            && let Err(msg) = self.persist_event_checked(pool, &event).await
+        {
+            self.failure_count.fetch_add(1, Ordering::Relaxed);
+            tracing::warn!(
+                error = %msg,
+                failures = self.failure_count.load(Ordering::Relaxed),
+                "audit persistence failure"
+            );
+            if self.failure_policy == AuditFailurePolicy::FailClosed {
+                return Err(AuditError::PersistenceFailed(msg));
             }
         }
         Ok(())
@@ -159,9 +158,8 @@ impl AuditLogger {
     /// string on failure instead of silently swallowing it.
     async fn persist_event_checked(&self, pool: &PgPool, event: &AuditEvent) -> Result<(), String> {
         let event_type = event.event_type_name();
-        let event_data = serde_json::to_value(event).map_err(|e| {
-            format!("failed to serialize audit event for persistence: {e}")
-        })?;
+        let event_data = serde_json::to_value(event)
+            .map_err(|e| format!("failed to serialize audit event for persistence: {e}"))?;
 
         sqlx::query(
             r#"

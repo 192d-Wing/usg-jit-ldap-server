@@ -13,8 +13,8 @@
 //   key derivation function resistant to GPU/ASIC attacks.
 
 use argon2::{
-    password_hash::{rand_core::OsRng, PasswordHash, PasswordHasher, PasswordVerifier, SaltString},
     Argon2,
+    password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
 use zeroize::Zeroize;
 
@@ -89,8 +89,8 @@ pub fn verify_password(mut plaintext: Vec<u8>, stored_hash: &str) -> Result<bool
             "stored hash exceeds maximum length".into(),
         ));
     }
-    let parsed_hash = PasswordHash::new(stored_hash)
-        .map_err(|e| PasswordError::MalformedHash(e.to_string()))?;
+    let parsed_hash =
+        PasswordHash::new(stored_hash).map_err(|e| PasswordError::MalformedHash(e.to_string()))?;
 
     let argon2 = Argon2::default();
     let result = argon2.verify_password(&plaintext, &parsed_hash);

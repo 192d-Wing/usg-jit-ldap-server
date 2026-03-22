@@ -114,7 +114,8 @@ impl ReplicationConfig {
         }
         // NIST SC-8: Validate that the replication connection uses verified TLS.
         // Parse the URL properly to prevent bypass via embedded strings.
-        let has_valid_sslmode = self.central_url
+        let has_valid_sslmode = self
+            .central_url
             .split('?')
             .nth(1)
             .unwrap_or("")
@@ -145,7 +146,9 @@ impl ReplicationConfig {
             enabled: settings.enabled,
             central_url: settings.central_url.clone().unwrap_or_default(),
             pull_interval: Duration::from_secs(settings.pull_interval_secs),
-            site_id: settings.site_id.as_deref()
+            site_id: settings
+                .site_id
+                .as_deref()
                 .and_then(|s| s.parse::<Uuid>().ok())
                 .unwrap_or(Uuid::nil()),
             max_retry_attempts: settings.max_retry_attempts,

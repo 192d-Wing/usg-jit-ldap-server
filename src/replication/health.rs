@@ -24,8 +24,8 @@ use chrono::{DateTime, Utc};
 use tracing::{debug, info, warn};
 use uuid::Uuid;
 
-use super::puller::PullResult;
 use super::ReplicationStatus;
+use super::puller::PullResult;
 
 /// Tracks the health of replication at a single site.
 ///
@@ -197,10 +197,7 @@ impl ReplicationHealth {
 
         // Emit staleness metric if we have a last_sync timestamp.
         if let Some(last) = self.last_sync {
-            let staleness_secs = Utc::now()
-                .signed_duration_since(last)
-                .num_seconds()
-                .max(0) as u64;
+            let staleness_secs = Utc::now().signed_duration_since(last).num_seconds().max(0) as u64;
             warn!(
                 site_id = %self.site_id,
                 replication_staleness_seconds = staleness_secs,

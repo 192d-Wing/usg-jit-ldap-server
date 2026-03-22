@@ -35,18 +35,20 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Instant;
 
+use audit::AuditLogger;
+use audit::events::AuditEvent;
+use auth::rate_limit::{RateLimiter, SearchRateLimiter};
+use auth::{
+    ConfigBrokerAuthorizer, DatabaseAuthenticator, DatabasePasswordStore, DatabaseSearchBackend,
+};
+use db::pool::DbPool;
+use ldap::LdapHandler;
+use ldap::codec::LdapCodec;
+use ldap::session::LdapSession;
+use replication::ReplicationConfig;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 use tokio::sync::Semaphore;
-use audit::events::AuditEvent;
-use audit::AuditLogger;
-use auth::{ConfigBrokerAuthorizer, DatabaseAuthenticator, DatabasePasswordStore, DatabaseSearchBackend};
-use auth::rate_limit::{RateLimiter, SearchRateLimiter};
-use db::pool::DbPool;
-use ldap::codec::LdapCodec;
-use ldap::session::LdapSession;
-use ldap::LdapHandler;
-use replication::ReplicationConfig;
 
 // ---------------------------------------------------------------------------
 // Main
@@ -168,20 +170,30 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             loop {
                 interval.tick().await;
                 // Clean forwarded audit events.
-                match crate::db::runtime::cleanup_forwarded_audit_events(&cleanup_pool, retention_days).await {
+                match crate::db::runtime::cleanup_forwarded_audit_events(
+                    &cleanup_pool,
+                    retention_days,
+                )
+                .await
+                {
                     Ok(n) if n > 0 => tracing::info!(deleted = n, "audit queue cleanup completed"),
                     Err(e) => tracing::warn!(error = %e, "audit queue cleanup failed"),
                     _ => {}
                 }
                 // Clean stale passwords.
                 match crate::db::runtime::cleanup_stale_passwords(&cleanup_pool).await {
-                    Ok(n) if n > 0 => tracing::info!(deleted = n, "stale password cleanup completed"),
+                    Ok(n) if n > 0 => {
+                        tracing::info!(deleted = n, "stale password cleanup completed")
+                    }
                     Err(e) => tracing::warn!(error = %e, "stale password cleanup failed"),
                     _ => {}
                 }
             }
         });
-        tracing::info!(retention_days = retention_days, "periodic cleanup task started (hourly)");
+        tracing::info!(
+            retention_days = retention_days,
+            "periodic cleanup task started (hourly)"
+        );
     }
 
     // Step 5b: Start admin health endpoint if enabled.
@@ -224,7 +236,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         server_config.server.bind_addr, server_config.server.port
     )
     .parse()
-    .map_err(|e| format!("invalid bind address '{}:{}': {}", server_config.server.bind_addr, server_config.server.port, e))?;
+    .map_err(|e| {
+        format!(
+            "invalid bind address '{}:{}': {}",
+            server_config.server.bind_addr, server_config.server.port, e
+        )
+    })?;
 
     let listener = TcpListener::bind(&listen_addr).await?;
     tracing::info!(
@@ -362,6 +379,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 /// NIST SC-23: Session authenticity — one LDAP session per TLS connection.
 /// The session state machine (Connected -> Bound -> Closed) is maintained
 /// entirely on the server side. The client cannot forge session state.
+#[allow(clippy::too_many_arguments)]
 async fn handle_connection(
     tls_stream: tokio_rustls::server::TlsStream<tokio::net::TcpStream>,
     peer_addr: SocketAddr,
@@ -378,12 +396,8 @@ async fn handle_connection(
     // Build per-connection concrete implementations of the protocol traits.
     // NIST IA-2: The authenticator is the identification and authentication
     // enforcement point for this connection.
-    let authenticator = DatabaseAuthenticator::new(
-        pool.clone(),
-        rate_limiter,
-        audit.clone(),
-        peer_addr,
-    );
+    let authenticator =
+        DatabaseAuthenticator::new(pool.clone(), rate_limiter, audit.clone(), peer_addr);
     let search_backend = DatabaseSearchBackend::new(pool.clone(), search_rate_limiter, peer_addr);
     let password_store = DatabasePasswordStore::new(pool.clone(), password_ttl);
 
@@ -546,10 +560,9 @@ async fn handle_connection(
 /// NIST AU-3: Structured logging ensures audit records contain the required
 /// contextual fields (timestamps, source, outcome).
 fn init_tracing() {
-    use tracing_subscriber::{fmt, EnvFilter};
+    use tracing_subscriber::{EnvFilter, fmt};
 
-    let filter = EnvFilter::try_from_default_env()
-        .unwrap_or_else(|_| EnvFilter::new("info"));
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
 
     fmt()
         .with_env_filter(filter)

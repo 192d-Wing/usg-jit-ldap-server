@@ -10,6 +10,7 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 /// Helper to get a test socket address.
+#[allow(dead_code)]
 pub fn test_addr() -> SocketAddr {
     SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 54321)
 }

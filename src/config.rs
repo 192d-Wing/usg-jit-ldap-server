@@ -251,17 +251,13 @@ pub struct AuditSettings {
 /// define the action to take when audit storage is exhausted or write fails.
 #[derive(Debug, Deserialize, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum AuditFailurePolicy {
     /// Log warning, continue processing (current behavior).
+    #[default]
     FailOpen,
     /// Return error, reject the operation.
     FailClosed,
-}
-
-impl Default for AuditFailurePolicy {
-    fn default() -> Self {
-        Self::FailOpen
-    }
 }
 
 fn default_audit_enabled() -> bool {
@@ -464,12 +460,24 @@ fn validate(config: &ServerConfig) -> Result<(), ConfigError> {
 
     // If replication is enabled, central_url and site_id are required.
     if config.replication.enabled {
-        if config.replication.central_url.as_deref().unwrap_or("").is_empty() {
+        if config
+            .replication
+            .central_url
+            .as_deref()
+            .unwrap_or("")
+            .is_empty()
+        {
             return Err(ConfigError::Validation(
                 "central_url is required when replication is enabled".into(),
             ));
         }
-        if config.replication.site_id.as_deref().unwrap_or("").is_empty() {
+        if config
+            .replication
+            .site_id
+            .as_deref()
+            .unwrap_or("")
+            .is_empty()
+        {
             return Err(ConfigError::Validation(
                 "site_id is required when replication is enabled".into(),
             ));
@@ -544,8 +552,8 @@ enabled = true
 
     #[test]
     fn test_empty_database_url_rejected() {
-        let toml_str = minimal_config_toml()
-            .replace("url = \"postgresql://localhost/test\"", "url = \"\"");
+        let toml_str =
+            minimal_config_toml().replace("url = \"postgresql://localhost/test\"", "url = \"\"");
         let config: ServerConfig = toml::from_str(&toml_str).unwrap();
         let result = validate(&config);
         assert!(result.is_err());

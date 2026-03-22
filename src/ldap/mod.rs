@@ -12,13 +12,11 @@ pub mod password;
 pub mod search;
 pub mod session;
 
-use codec::{
-    ExtendedResponse, LdapMessage, LdapResult, ProtocolOp, ResultCode,
-};
+use codec::{ExtendedResponse, LdapMessage, LdapResult, ProtocolOp, ResultCode};
 use session::LdapSession;
 
 use bind::{Authenticator, BindHandler};
-use password::{BrokerAuthorizer, PasswordModifyHandler, PasswordStore, PASSWORD_MODIFY_OID};
+use password::{BrokerAuthorizer, PASSWORD_MODIFY_OID, PasswordModifyHandler, PasswordStore};
 use search::{SearchBackend, SearchHandler};
 
 use crate::audit::AuditLogger;
@@ -135,8 +133,7 @@ where
                 Vec::new()
             }
             ProtocolOp::SearchRequest(req) => {
-                let (entries, result) =
-                    self.search_handler.handle_search(&req, session).await;
+                let (entries, result) = self.search_handler.handle_search(&req, session).await;
 
                 let mut responses: Vec<LdapMessage> = entries
                     .into_iter()
@@ -381,10 +378,7 @@ mod tests {
             )
             .await;
         assert!(responses.is_empty());
-        assert!(matches!(
-            session.state(),
-            session::SessionState::Closed
-        ));
+        assert!(matches!(session.state(), session::SessionState::Closed));
     }
 
     #[tokio::test]

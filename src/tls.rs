@@ -19,10 +19,10 @@ use std::fs::File;
 use std::io::BufReader;
 use std::sync::Arc;
 
-use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls::ServerConfig;
-use tokio_rustls::TlsAcceptor;
+use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use thiserror::Error;
+use tokio_rustls::TlsAcceptor;
 
 use crate::config::TlsSettings;
 
@@ -191,7 +191,8 @@ fn build_server_config(
     // NIST SC-13: Strongest available cryptographic protection.
     if min_version != "1.3" {
         return Err(TlsError::UnsupportedVersion(format!(
-            "'{}' — only TLS 1.3 is supported", min_version
+            "'{}' — only TLS 1.3 is supported",
+            min_version
         )));
     }
 

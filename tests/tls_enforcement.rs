@@ -12,7 +12,7 @@ fn generate_test_certs() -> (Vec<u8>, Vec<u8>) {
     let subject_alt_names = vec!["localhost".to_string()];
     let cert = generate_simple_self_signed(subject_alt_names).unwrap();
     let cert_pem = cert.cert.pem().into_bytes();
-    let key_pem = cert.key_pair.serialize_pem().into_bytes();
+    let key_pem = cert.signing_key.serialize_pem().into_bytes();
     (cert_pem, key_pem)
 }
 
@@ -56,7 +56,10 @@ fn test_tls_acceptor_fails_without_cert_file() {
     };
 
     let result = usg_jit_ldap_server::tls::build_tls_acceptor(&settings);
-    assert!(result.is_err(), "TLS acceptor should fail without cert file");
+    assert!(
+        result.is_err(),
+        "TLS acceptor should fail without cert file"
+    );
 }
 
 #[test]
@@ -70,7 +73,10 @@ fn test_tls_12_rejected() {
     };
 
     let result = usg_jit_ldap_server::tls::build_tls_acceptor(&settings);
-    assert!(result.is_err(), "TLS 1.2 should be rejected — only 1.3 is supported");
+    assert!(
+        result.is_err(),
+        "TLS 1.2 should be rejected — only 1.3 is supported"
+    );
 }
 
 #[test]

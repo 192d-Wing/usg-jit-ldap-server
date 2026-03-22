@@ -167,7 +167,11 @@ pub struct SearchRateLimiter {
 
 impl SearchRateLimiter {
     pub fn new(pool: Arc<PgPool>, max_searches: u32, window_secs: u64) -> Self {
-        Self { pool, max_searches, window_secs }
+        Self {
+            pool,
+            max_searches,
+            window_secs,
+        }
     }
 
     /// Check whether a search from the given IP is allowed.

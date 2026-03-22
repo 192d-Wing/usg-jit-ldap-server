@@ -20,9 +20,7 @@
 use std::future::Future;
 use std::pin::Pin;
 
-use super::codec::{
-    AuthChoice, BindRequest, BindResponse, LdapResult, ResultCode,
-};
+use super::codec::{AuthChoice, BindRequest, BindResponse, LdapResult, ResultCode};
 use super::session::LdapSession;
 
 // ---------------------------------------------------------------------------
@@ -99,11 +97,7 @@ impl<A: Authenticator> BindHandler<A> {
     /// # NIST AC-7: Unsuccessful Logon Attempts
     /// All outcomes are logged with the peer address and DN for audit and
     /// rate-limiting purposes.
-    pub async fn handle_bind(
-        &self,
-        req: &BindRequest,
-        session: &mut LdapSession,
-    ) -> BindResponse {
+    pub async fn handle_bind(&self, req: &BindRequest, session: &mut LdapSession) -> BindResponse {
         // Reject non-LDAPv3.
         if req.version != 3 {
             tracing::warn!(
@@ -132,7 +126,8 @@ impl<A: Authenticator> BindHandler<A> {
                     result: LdapResult {
                         result_code: ResultCode::AuthMethodNotSupported,
                         matched_dn: String::new(),
-                        diagnostic_message: "SASL authentication is not supported; use simple bind".into(),
+                        diagnostic_message: "SASL authentication is not supported; use simple bind"
+                            .into(),
                     },
                 };
             }

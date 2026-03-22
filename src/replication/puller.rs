@@ -282,7 +282,10 @@ impl ReplicationPuller {
         let entries: Vec<ReplicationLogEntry> = self
             .fetch_changes_from_central(&central_pool, last_seq)
             .await?;
-        debug!(entries_count = entries.len(), "Fetched changes from central");
+        debug!(
+            entries_count = entries.len(),
+            "Fetched changes from central"
+        );
 
         if entries.is_empty() {
             let duration = start.elapsed();
@@ -328,7 +331,9 @@ impl ReplicationPuller {
     }
 
     /// Reads the site's last consumed sequence number from local metadata.
-    async fn read_local_sequence_number(&self) -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
+    async fn read_local_sequence_number(
+        &self,
+    ) -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
         let row: Option<(i64,)> = sqlx::query_as(
             "SELECT last_sequence_number FROM replication_metadata WHERE site_id = $1",
         )
@@ -362,29 +367,30 @@ impl ReplicationPuller {
         central_pool: &sqlx::PgPool,
         since_seq: i64,
     ) -> Result<Vec<ReplicationLogEntry>, Box<dyn std::error::Error + Send + Sync>> {
-        let rows = sqlx::query_as::<_, (i64, String, Uuid, serde_json::Value, chrono::DateTime<Utc>)>(
-            "SELECT seq_number, change_type, entity_id, payload, created_at \
+        let rows =
+            sqlx::query_as::<_, (i64, String, Uuid, serde_json::Value, chrono::DateTime<Utc>)>(
+                "SELECT seq_number, change_type, entity_id, payload, created_at \
              FROM replication_log \
              WHERE seq_number > $1 \
              ORDER BY seq_number ASC \
              LIMIT $2",
-        )
-        .bind(since_seq)
-        .bind(self.config.batch_size)
-        .fetch_all(central_pool)
-        .await?;
+            )
+            .bind(since_seq)
+            .bind(self.config.batch_size)
+            .fetch_all(central_pool)
+            .await?;
 
         let entries = rows
             .into_iter()
-            .map(|(seq_number, change_type, entity_id, payload, created_at)| {
-                ReplicationLogEntry {
+            .map(
+                |(seq_number, change_type, entity_id, payload, created_at)| ReplicationLogEntry {
                     seq_number,
                     change_type,
                     entity_id,
                     payload,
                     created_at,
-                }
-            })
+                },
+            )
             .collect();
 
         Ok(entries)
@@ -784,8 +790,13 @@ pub async fn trigger_full_resync(
 pub fn spawn_puller(
     config: ReplicationConfig,
     local_pool: std::sync::Arc<sqlx::PgPool>,
-) -> (JoinHandle<()>, std::sync::Arc<tokio::sync::Mutex<ReplicationHealth>>) {
-    let health = std::sync::Arc::new(tokio::sync::Mutex::new(ReplicationHealth::new(config.site_id)));
+) -> (
+    JoinHandle<()>,
+    std::sync::Arc<tokio::sync::Mutex<ReplicationHealth>>,
+) {
+    let health = std::sync::Arc::new(tokio::sync::Mutex::new(ReplicationHealth::new(
+        config.site_id,
+    )));
     let puller = ReplicationPuller::new((*local_pool).clone(), config, health.clone());
     let handle = puller.start();
     (handle, health)

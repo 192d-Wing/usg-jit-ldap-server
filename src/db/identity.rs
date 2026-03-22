@@ -144,11 +144,7 @@ impl<'a> IdentityRepository<'a> {
     ///
     /// The base DN check uses a suffix match: a user's DN must end with
     /// the base DN to be considered "under" it in the directory tree.
-    pub async fn search_users(
-        &self,
-        base_dn: &str,
-        filter: &SearchFilter,
-    ) -> DbResult<Vec<User>> {
+    pub async fn search_users(&self, base_dn: &str, filter: &SearchFilter) -> DbResult<Vec<User>> {
         // Build a dynamic query. We use the dn LIKE '%base_dn' pattern
         // for subtree searches. The base_dn_pattern is constructed as a
         // suffix match (the user's DN ends with the base DN).
@@ -174,7 +170,7 @@ impl<'a> IdentityRepository<'a> {
         .bind(&base_dn_pattern)
         .bind(&filter.username)
         .bind(&filter.email)
-        .bind(&filter.enabled)
+        .bind(filter.enabled)
         .bind(limit)
         .fetch_all(self.pool)
         .await?;
@@ -219,11 +215,7 @@ impl<'a> IdentityRepository<'a> {
     /// NIST AC-2: per-site account authorization.
     /// Returns `true` if a `site_policies` row exists with `access_allowed = true`.
     /// Returns `false` if no row exists or access is explicitly denied.
-    pub async fn check_site_access(
-        &self,
-        user_id: Uuid,
-        site_id: Uuid,
-    ) -> DbResult<bool> {
+    pub async fn check_site_access(&self, user_id: Uuid, site_id: Uuid) -> DbResult<bool> {
         let allowed = sqlx::query_scalar::<_, bool>(
             r#"
             SELECT access_allowed
@@ -266,11 +258,7 @@ impl<'a> IdentityRepository<'a> {
     /// This is called within the same transaction as the identity data
     /// application, ensuring atomicity between data changes and sequence
     /// number advancement.
-    pub async fn update_replication_metadata(
-        &self,
-        site_id: Uuid,
-        seq: i64,
-    ) -> DbResult<()> {
+    pub async fn update_replication_metadata(&self, site_id: Uuid, seq: i64) -> DbResult<()> {
         sqlx::query(
             r#"
             INSERT INTO identity.replication_metadata (site_id, last_sequence_number, last_sync_at, sync_status)
