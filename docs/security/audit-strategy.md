@@ -56,14 +56,13 @@ operation that does not appear here is a gap that must be addressed.
 | `service_started` | LDAPS listener bound and accepting | INFO | timestamp, bind_addr, port, tls_min_version |
 | `service_stopped` | Service shutting down | INFO | timestamp, reason |
 
-### Replication Events (Planned)
+### Replication Events
 
 | Event Type | Trigger | Severity | Fields |
 |---|---|---|---|
-| `replication_pull_success` | Replication pull completed | INFO | timestamp, site_id, sequence_number, entries_synced |
-| `replication_pull_failure` | Replication pull failed | WARN | timestamp, site_id, error_detail, consecutive_failures |
+| `replication_sync` (success) | Replication pull completed | INFO | timestamp, site_id, success=true, changes_applied, new_seq, duration_ms |
+| `replication_sync` (failure) | Replication pull failed | ERROR | timestamp, site_id, success=false, consecutive_failures, error (sanitized) |
 | `replication_stale` | Data age exceeds staleness threshold | WARN | timestamp, site_id, last_sync_age_secs, threshold_secs |
-| `replication_recovered` | Replication resumed after failure | INFO | timestamp, site_id, downtime_secs |
 
 ## Audit Record Format (AU-3)
 

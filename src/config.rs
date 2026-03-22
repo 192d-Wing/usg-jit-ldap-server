@@ -373,7 +373,16 @@ pub fn resolve_config_path() -> String {
 ///
 /// NIST CM-6: Configuration settings are loaded from a validated file.
 /// The function fails with a descriptive error if validation does not pass.
+///
+/// The path must be absolute to prevent path-traversal attacks in container
+/// or systemd environments where an attacker might control CLI arguments.
 pub fn load(path: &str) -> Result<ServerConfig, ConfigError> {
+    if !std::path::Path::new(path).is_absolute() && path != "config.toml" {
+        return Err(ConfigError::Validation(format!(
+            "configuration path '{}' must be absolute (e.g. /etc/ldap-server/config.toml)",
+            path
+        )));
+    }
     // Read the file.
     let contents = std::fs::read_to_string(path).map_err(|e| ConfigError::ReadFile {
         path: path.to_string(),
@@ -435,6 +444,32 @@ fn validate(config: &ServerConfig) -> Result<(), ConfigError> {
         return Err(ConfigError::Validation(
             "database URL must not be empty".into(),
         ));
+    }
+
+    // NIST SC-8: Warn if database URL does not enforce TLS.
+    // Accept sslmode=require, verify-ca, or verify-full.
+    if !config.database.url.is_empty() {
+        let has_tls = config
+            .database
+            .url
+            .split('?')
+            .nth(1)
+            .unwrap_or("")
+            .split('&')
+            .filter_map(|param| param.split_once('='))
+            .any(|(key, value)| {
+                key == "sslmode"
+                    && (value == "require"
+                        || value == "verify-ca"
+                        || value == "verify-full")
+            });
+        if !has_tls {
+            return Err(ConfigError::Validation(
+                "database URL should include sslmode=require, sslmode=verify-ca, \
+                 or sslmode=verify-full (NIST SC-8: transmission confidentiality)"
+                    .into(),
+            ));
+        }
     }
 
     // Rate limit window must be positive.
@@ -533,7 +568,7 @@ cert_path = "/tmp/test-cert.pem"
 key_path = "/tmp/test-key.pem"
 
 [database]
-url = "postgresql://localhost/test"
+url = "postgresql://localhost/test?sslmode=require"
 
 [replication]
 enabled = false
@@ -579,8 +614,8 @@ enabled = true
 
     #[test]
     fn test_empty_database_url_rejected() {
-        let toml_str =
-            minimal_config_toml().replace("url = \"postgresql://localhost/test\"", "url = \"\"");
+        let toml_str = minimal_config_toml()
+            .replace("url = \"postgresql://localhost/test?sslmode=require\"", "url = \"\"");
         let config: ServerConfig = toml::from_str(&toml_str).unwrap();
         let result = validate(&config);
         assert!(result.is_err());

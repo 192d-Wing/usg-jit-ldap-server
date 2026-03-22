@@ -131,8 +131,9 @@ man-in-the-middle position on the WAN link.
 |---|---|---|---|
 | 1 | Mutual TLS | Both hub and site must present valid certificates from project CA | `src/replication/puller.rs` |
 | 2 | Certificate CN validation | Site certificate CN must match registered site ID | Replication authentication |
-| 3 | Payload integrity | SHA-256 digest on replication payloads | Replication protocol |
-| 4 | Sequence numbers | Monotonic sequence numbers detect gaps and replays | `identity.replication_metadata.last_sequence_number` |
+| 3 | Payload integrity | SHA-256 digest computed at hub, verified at site before applying | `src/replication/puller.rs` — `verify_entries()` |
+| 3b | Protocol versioning | Site rejects entries with unsupported protocol versions | `src/replication/puller.rs` — `REPLICATION_PROTOCOL_VERSION` |
+| 4 | Sequence numbers | Monotonic sequence numbers; gaps detected and logged at WARN | `src/replication/puller.rs` — `verify_entries()` |
 | 5 | Change set anomaly detection | Alerts on unusually large change sets | Replication health monitoring |
 | 6 | Identity-only replication | Only `identity` schema data flows; `runtime` is immune | Schema-level enforcement |
 

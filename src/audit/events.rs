@@ -119,6 +119,18 @@ pub enum AuditEvent {
         messages_processed: u64,
         duration_secs: f64,
     },
+
+    /// A replication sync completed (success or failure).
+    /// NIST CP-9/SI-7: Tracks identity data synchronization events.
+    ReplicationSync {
+        timestamp: DateTime<Utc>,
+        site_id: String,
+        success: bool,
+        changes_applied: u64,
+        new_sequence_number: i64,
+        duration_ms: u64,
+        failure_reason: Option<String>,
+    },
 }
 
 /// Outcome of a bind attempt.
@@ -249,6 +261,7 @@ impl AuditEvent {
             Self::ServiceStopped { .. } => "service_stopped",
             Self::ConnectionOpened { .. } => "connection_opened",
             Self::ConnectionClosed { .. } => "connection_closed",
+            Self::ReplicationSync { .. } => "replication_sync",
         }
     }
 }

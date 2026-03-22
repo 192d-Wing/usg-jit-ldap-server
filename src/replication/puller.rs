@@ -46,6 +46,7 @@
 use std::time::{Duration, Instant};
 
 use chrono::Utc;
+use sha2::{Digest, Sha256};
 use tokio::task::JoinHandle;
 use tracing::{debug, error, info, instrument, warn};
 use uuid::Uuid;
@@ -102,6 +103,9 @@ pub enum ReplicationChange {
     },
 }
 
+/// Supported replication protocol version.
+const REPLICATION_PROTOCOL_VERSION: i32 = 1;
+
 /// Row from the central `replication_log` table.
 #[derive(Debug)]
 struct ReplicationLogEntry {
@@ -109,6 +113,8 @@ struct ReplicationLogEntry {
     change_type: String,
     entity_id: Uuid,
     payload: serde_json::Value,
+    payload_hash: String,
+    protocol_version: i32,
     #[allow(dead_code)]
     created_at: chrono::DateTime<Utc>,
 }
@@ -203,7 +209,9 @@ impl ReplicationPuller {
                     h.record_success(&result);
 
                     info!(
+                        event_type = "replication_sync",
                         site_id = %self.config.site_id,
+                        success = true,
                         changes_applied = result.changes_applied,
                         new_seq = result.new_sequence_number,
                         duration_ms = result.duration.as_millis() as u64,
@@ -227,7 +235,9 @@ impl ReplicationPuller {
                     }
 
                     error!(
+                        event_type = "replication_sync",
                         site_id = %self.config.site_id,
+                        success = false,
                         consecutive_failures,
                         error = %error_msg,
                         "Pull cycle failed"
@@ -296,6 +306,9 @@ impl ReplicationPuller {
                 status: ReplicationStatus::Synced,
             });
         }
+
+        // Step 3b: Verify protocol version, payload integrity, and sequence continuity.
+        self.verify_entries(&entries, last_seq)?;
 
         // Step 4 & 5: Parse changes and apply in a transaction.
         let changes = self.parse_entries(&entries)?;
@@ -367,9 +380,8 @@ impl ReplicationPuller {
         central_pool: &sqlx::PgPool,
         since_seq: i64,
     ) -> Result<Vec<ReplicationLogEntry>, Box<dyn std::error::Error + Send + Sync>> {
-        let rows =
-            sqlx::query_as::<_, (i64, String, Uuid, serde_json::Value, chrono::DateTime<Utc>)>(
-                "SELECT seq_number, change_type, entity_id, payload, created_at \
+        let rows = sqlx::query_as::<_, (i64, String, Uuid, serde_json::Value, String, i32, chrono::DateTime<Utc>)>(
+                "SELECT seq_number, change_type, entity_id, payload, payload_hash, protocol_version, created_at \
              FROM replication_log \
              WHERE seq_number > $1 \
              ORDER BY seq_number ASC \
@@ -383,17 +395,101 @@ impl ReplicationPuller {
         let entries = rows
             .into_iter()
             .map(
-                |(seq_number, change_type, entity_id, payload, created_at)| ReplicationLogEntry {
+                |(seq_number, change_type, entity_id, payload, payload_hash, protocol_version, created_at)| ReplicationLogEntry {
                     seq_number,
                     change_type,
                     entity_id,
                     payload,
+                    payload_hash,
+                    protocol_version,
                     created_at,
                 },
             )
             .collect();
 
         Ok(entries)
+    }
+
+    /// Verifies replication entries for protocol version, payload integrity,
+    /// and sequence number continuity.
+    ///
+    /// # NIST SI-7 (Information Integrity)
+    /// - Protocol version: rejects entries from unknown protocol versions.
+    /// - SHA-256 verification: recomputes hash of payload and compares to stored
+    ///   digest to detect tampering in transit or at rest.
+    /// - Sequence gap detection: ensures no entries were dropped between the
+    ///   last known sequence and the first entry in this batch.
+    fn verify_entries(
+        &self,
+        entries: &[ReplicationLogEntry],
+        last_seq: i64,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        // Protocol version check.
+        for entry in entries {
+            if entry.protocol_version > REPLICATION_PROTOCOL_VERSION {
+                return Err(format!(
+                    "replication entry seq={} uses protocol version {} (supported: {}). \
+                     Upgrade the site software to process this entry.",
+                    entry.seq_number, entry.protocol_version, REPLICATION_PROTOCOL_VERSION
+                )
+                .into());
+            }
+        }
+
+        // SHA-256 payload integrity verification.
+        for entry in entries {
+            let computed = {
+                let payload_text = entry.payload.to_string();
+                let hash = Sha256::digest(payload_text.as_bytes());
+                hash.iter().fold(String::with_capacity(64), |mut s, b| {
+                    use std::fmt::Write;
+                    let _ = write!(s, "{b:02x}");
+                    s
+                })
+            };
+            if computed != entry.payload_hash {
+                return Err(format!(
+                    "NIST SI-7: replication payload integrity check failed for seq={}. \
+                     Expected hash '{}', computed '{}'.",
+                    entry.seq_number, entry.payload_hash, computed
+                )
+                .into());
+            }
+        }
+
+        // Sequence gap detection.
+        if let Some(first) = entries.first() {
+            let expected_first = last_seq + 1;
+            if first.seq_number != expected_first {
+                warn!(
+                    expected = expected_first,
+                    actual = first.seq_number,
+                    "NIST SI-7: sequence gap detected in replication log. \
+                     Expected seq {}, got {}. Possible log pruning or tampering.",
+                    expected_first,
+                    first.seq_number
+                );
+                // Log gap but continue — the data itself is still valid.
+                // Operators should investigate gaps via monitoring.
+            }
+        }
+
+        // Check for internal gaps within the batch.
+        for window in entries.windows(2) {
+            let prev = window[0].seq_number;
+            let curr = window[1].seq_number;
+            if curr != prev + 1 {
+                warn!(
+                    prev_seq = prev,
+                    curr_seq = curr,
+                    "NIST SI-7: internal sequence gap in replication batch ({} -> {})",
+                    prev,
+                    curr
+                );
+            }
+        }
+
+        Ok(())
     }
 
     /// Parses replication log entries into typed `ReplicationChange` values.

@@ -59,6 +59,9 @@ chrono = { version = "0.4", features = ["serde"] }
 # Certificate parsing for expiry monitoring
 x509-parser = "0.18"
 
+# SHA-256 for replication payload integrity
+sha2 = "0.10"
+
 [dev-dependencies]
 proptest = "1"
 rcgen = "0.14"

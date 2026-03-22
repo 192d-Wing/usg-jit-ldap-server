@@ -375,10 +375,10 @@ assessor can search for), and the implementation status.
 |---|---|
 | **Control** | SI-7 |
 | **Title** | Software, Firmware, and Information Integrity |
-| **Implementation** | Replication payloads include SHA-256 digests for integrity verification. Monotonic sequence numbers detect gaps and replay attempts. The replication puller verifies payload integrity before applying changes to the local `identity` schema. At the build level, `cargo audit` should be run in CI to detect known vulnerabilities in dependencies. Rust's type system prevents many classes of memory corruption that could compromise integrity. |
-| **Module/File** | `src/replication/puller.rs` |
-| **Code Evidence** | Replication integrity verification in puller |
-| **Status** | **Implemented** (replication integrity); **Planned** (CI `cargo audit` integration) |
+| **Implementation** | Replication payloads include SHA-256 digests (`payload_hash` column) computed at the central hub and verified by the site puller before applying changes. The `verify_entries()` method recomputes the SHA-256 of each payload and rejects entries where the hash does not match. Monotonic sequence numbers detect gaps (logged at WARN for investigation) and internal batch discontinuities. A `protocol_version` field enables safe schema evolution — sites reject entries with unsupported versions. At the build level, `cargo audit` runs in CI to detect known dependency vulnerabilities. Rust's type system prevents many classes of memory corruption that could compromise integrity. |
+| **Module/File** | `src/replication/puller.rs` — `verify_entries()`, `REPLICATION_PROTOCOL_VERSION` |
+| **Code Evidence** | SHA-256 verification, sequence gap detection, protocol version check |
+| **Status** | **Implemented** |
 
 ### SI-10: Information Input Validation
 

@@ -77,7 +77,7 @@ LDAP Server's implementation. It serves two audiences:
 
 | Control | Title | Module | Implementation Note |
 |---|---|---|---|
-| CM-6 | Configuration Settings | `src/config.rs` | Secure defaults for all security-relevant settings (TLS version, cipher suites, rate limits, timeouts). Configuration is validated at startup. |
+| CM-6 | Configuration Settings | `src/config.rs` | Secure defaults for all security-relevant settings (TLS version, cipher suites, rate limits, timeouts). Configuration path must be absolute. Database URL validated for TLS sslmode. Configuration is validated at startup. |
 | CM-7 | Least Functionality | `src/ldap/session.rs` | Only Bind, Search, and optionally Password Modify are implemented. No Add, Delete, Modify, ModDN, or other LDAP operations. Unsupported operations return `unwillingToPerform`. |
 
 ## Code Comment Convention
