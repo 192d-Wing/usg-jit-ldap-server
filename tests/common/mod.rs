@@ -48,21 +48,23 @@ pub async fn setup_test_pool() -> PgPool {
 /// Insert a test user into identity.users. Returns the user's UUID.
 pub async fn insert_test_user(pool: &PgPool, dn: &str, username: &str) -> Uuid {
     let id = Uuid::new_v4();
-    sqlx::query(
+    let row: (Uuid,) = sqlx::query_as(
         "INSERT INTO identity.users (id, username, display_name, email, dn, enabled, created_at, updated_at)
          VALUES ($1, $2, $2, $2 || '@test.com', $3, true, now(), now())
-         ON CONFLICT (dn) DO UPDATE SET username = $2 RETURNING id",
+         ON CONFLICT (dn) DO UPDATE SET username = EXCLUDED.username
+         RETURNING id",
     )
     .bind(id)
     .bind(username)
     .bind(dn)
-    .execute(pool)
+    .fetch_one(pool)
     .await
     .expect("failed to insert test user");
-    id
+    row.0
 }
 
 /// Insert an ephemeral password for a user. Returns the password row UUID.
+/// Use ttl_secs > 0 for a valid password, or ttl_secs < 0 for an already-expired one.
 pub async fn insert_ephemeral_password(
     pool: &PgPool,
     user_id: Uuid,
@@ -73,17 +75,33 @@ pub async fn insert_ephemeral_password(
     let hash = usg_jit_ldap_server::auth::password::hash_password(plaintext.as_bytes().to_vec())
         .expect("failed to hash password");
     let id = Uuid::new_v4();
-    sqlx::query(
-        "INSERT INTO runtime.ephemeral_passwords (id, user_id, password_hash, issued_by, expires_at)
-         VALUES ($1, $2, $3, 'test-harness', now() + make_interval(secs => $4::double precision))",
-    )
-    .bind(id)
-    .bind(user_id)
-    .bind(&hash)
-    .bind(ttl_secs as f64)
-    .execute(pool)
-    .await
-    .expect("failed to insert ephemeral password");
+    // For expired passwords (ttl_secs <= 0), set issued_at in the past and
+    // expires_at slightly after issued_at to satisfy the check constraint
+    // (expires_at > issued_at), but still in the past so it's expired.
+    if ttl_secs <= 0 {
+        sqlx::query(
+            "INSERT INTO runtime.ephemeral_passwords (id, user_id, password_hash, issued_by, issued_at, expires_at)
+             VALUES ($1, $2, $3, 'test-harness', now() - interval '2 hours', now() - interval '1 hour')",
+        )
+        .bind(id)
+        .bind(user_id)
+        .bind(&hash)
+        .execute(pool)
+        .await
+        .expect("failed to insert expired ephemeral password");
+    } else {
+        sqlx::query(
+            "INSERT INTO runtime.ephemeral_passwords (id, user_id, password_hash, issued_by, expires_at)
+             VALUES ($1, $2, $3, 'test-harness', now() + make_interval(secs => $4::double precision))",
+        )
+        .bind(id)
+        .bind(user_id)
+        .bind(&hash)
+        .bind(ttl_secs as f64)
+        .execute(pool)
+        .await
+        .expect("failed to insert ephemeral password");
+    }
     id
 }
 

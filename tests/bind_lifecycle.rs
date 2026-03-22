@@ -66,11 +66,8 @@ async fn test_bind_with_expired_password() {
 
     let dn = "cn=expiry-test,ou=users,dc=test,dc=com";
     let user_id = common::insert_test_user(&pool, dn, "expiry-test").await;
-    // Insert password with 0 TTL (already expired)
-    common::insert_ephemeral_password(&pool, user_id, "expired-pass", 0).await;
-
-    // Wait a moment for expiry
-    tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+    // Insert password that's already expired (negative TTL uses past dates)
+    common::insert_ephemeral_password(&pool, user_id, "expired-pass", -1).await;
 
     let pool_arc = std::sync::Arc::new(pool.clone());
     let auth = usg_jit_ldap_server::auth::DatabaseAuthenticator::new(
