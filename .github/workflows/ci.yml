@@ -90,16 +90,42 @@ jobs:
         runner: [ubuntu-latest, ubuntu-24.04-arm]
     steps:
       - uses: actions/checkout@v6
-      - name: Generate test TLS certificates
+      - name: Generate test TLS certificates (CA + server)
         run: |
           mkdir -p tests/e2e/certs
-          # Self-signed v3 server certificate with SAN
+
+          # 1. Self-signed v3 CA
           openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
-            -keyout tests/e2e/certs/server.key -out tests/e2e/certs/server.crt \
+            -keyout tests/e2e/certs/ca.key -out tests/e2e/certs/ca.crt \
             -days 1 -nodes \
-            -subj "/CN=ldap-server/O=USG JIT LDAP Test/C=US" \
-            -addext "subjectAltName=DNS:ldap-server,IP:127.0.0.1" 2>/dev/null
-          chmod 644 tests/e2e/certs/server.key
+            -subj "/CN=Test CA/O=USG JIT LDAP Test/C=US" \
+            -addext "basicConstraints=critical,CA:TRUE" \
+            -addext "keyUsage=critical,keyCertSign,cRLSign" 2>/dev/null
+
+          # 2. Server CSR
+          openssl req -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+            -keyout tests/e2e/certs/server.key -out tests/e2e/certs/server.csr \
+            -nodes \
+            -subj "/CN=ldap-server/O=USG JIT LDAP Test/C=US" 2>/dev/null
+
+          # 3. Sign server cert as v3 with SAN using -copy_extensions
+          #    Write an extensions file to guarantee v3 output.
+          cat > tests/e2e/certs/server_ext.cnf <<'EXTEOF'
+          basicConstraints = CA:FALSE
+          keyUsage = critical, digitalSignature, keyEncipherment
+          extendedKeyUsage = serverAuth
+          subjectAltName = DNS:ldap-server, IP:127.0.0.1
+          EXTEOF
+          openssl x509 -req -in tests/e2e/certs/server.csr \
+            -CA tests/e2e/certs/ca.crt -CAkey tests/e2e/certs/ca.key \
+            -CAcreateserial -out tests/e2e/certs/server.crt \
+            -days 1 \
+            -extfile tests/e2e/certs/server_ext.cnf 2>/dev/null
+
+          # 4. Verify the cert is v3
+          openssl x509 -in tests/e2e/certs/server.crt -noout -text | head -4
+
+          chmod 644 tests/e2e/certs/server.key tests/e2e/certs/ca.key
       - name: Run e2e test stack
         run: |
           docker compose -f docker-compose.e2e.yml up \
