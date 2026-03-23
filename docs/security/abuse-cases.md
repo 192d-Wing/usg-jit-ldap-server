@@ -129,8 +129,8 @@ man-in-the-middle position on the WAN link.
 
 | # | Mitigation | Implementation | Module |
 |---|---|---|---|
-| 1 | Mutual TLS | Both hub and site must present valid certificates from project CA | `src/replication/puller.rs` |
-| 2 | Certificate CN validation | Site certificate CN must match registered site ID | Replication authentication |
+| 1 | Mutual TLS | Both hub and site must present valid certificates from project CA. Site sends sslcert/sslkey/sslrootcert in connection string. | `src/replication/puller.rs` — `build_central_url()` |
+| 2 | Certificate CN validation | Site client certificate CN validated against site_id at config startup | `src/config.rs` — replication validation |
 | 3 | Payload integrity | SHA-256 digest computed at hub, verified at site before applying | `src/replication/puller.rs` — `verify_entries()` |
 | 3b | Protocol versioning | Site rejects entries with unsupported protocol versions | `src/replication/puller.rs` — `REPLICATION_PROTOCOL_VERSION` |
 | 4 | Sequence numbers | Monotonic sequence numbers; gaps detected and logged at WARN | `src/replication/puller.rs` — `verify_entries()` |

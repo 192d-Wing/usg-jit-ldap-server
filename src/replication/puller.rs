@@ -282,11 +282,13 @@ impl ReplicationPuller {
         let last_seq = self.read_local_sequence_number().await?;
         debug!(last_seq, "Read local sequence number");
 
-        // Step 2: Connect to central.
+        // Step 2: Connect to central with mTLS.
         //
         // NIST SC-8: Connection uses TLS (enforced by sslmode in the connection
         // string, validated at config time).
-        let central_pool = sqlx::PgPool::connect(&self.config.central_url).await?;
+        // NIST IA-3: Client certificate authenticates this site to central.
+        let connect_url = build_central_url(&self.config);
+        let central_pool = sqlx::PgPool::connect(&connect_url).await?;
 
         // Step 3: Fetch changes from central.
         let entries: Vec<ReplicationLogEntry> = self
@@ -534,6 +536,11 @@ impl ReplicationPuller {
                         .get("enabled")
                         .and_then(|v| v.as_bool())
                         .ok_or("user_upsert: missing enabled field")?;
+                    let require_client_cert = entry
+                        .payload
+                        .get("require_client_cert")
+                        .and_then(|v| v.as_bool())
+                        .unwrap_or(false);
                     let record: UserRecord = UserRecord {
                         user_id: entry.entity_id,
                         username,
@@ -549,6 +556,7 @@ impl ReplicationPuller {
                             .and_then(|v| v.as_str())
                             .map(String::from),
                         enabled,
+                        require_client_cert,
                         updated_at: Utc::now(),
                     };
                     changes.push(ReplicationChange::UserUpsert(record));
@@ -686,14 +694,15 @@ impl ReplicationPuller {
                 ReplicationChange::UserUpsert(user) => {
                     sqlx::query(
                         "INSERT INTO identity.users \
-                            (user_id, username, dn, display_name, email, enabled, updated_at) \
-                         VALUES ($1, $2, $3, $4, $5, $6, $7) \
+                            (user_id, username, dn, display_name, email, enabled, require_client_cert, updated_at) \
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
                          ON CONFLICT (user_id) DO UPDATE SET \
                             username = EXCLUDED.username, \
                             dn = EXCLUDED.dn, \
                             display_name = EXCLUDED.display_name, \
                             email = EXCLUDED.email, \
                             enabled = EXCLUDED.enabled, \
+                            require_client_cert = EXCLUDED.require_client_cert, \
                             updated_at = EXCLUDED.updated_at",
                     )
                     .bind(user.user_id)
@@ -702,6 +711,7 @@ impl ReplicationPuller {
                     .bind(&user.display_name)
                     .bind(&user.email)
                     .bind(user.enabled)
+                    .bind(user.require_client_cert)
                     .bind(user.updated_at)
                     .execute(&mut **tx)
                     .await?;
@@ -846,6 +856,27 @@ impl ReplicationPuller {
             consecutive_failures,
         )
     }
+}
+
+/// Build the central connection URL with mTLS parameters.
+///
+/// If client cert/key/ca paths are configured, appends sslcert, sslkey,
+/// and sslrootcert query parameters to the connection string.
+///
+/// NIST IA-3: Client certificate authenticates the site to the central hub.
+fn build_central_url(config: &super::ReplicationConfig) -> String {
+    let mut url = config.central_url.clone();
+    if let (Some(cert), Some(key), Some(ca)) = (
+        &config.client_cert_path,
+        &config.client_key_path,
+        &config.ca_cert_path,
+    ) {
+        let sep = if url.contains('?') { "&" } else { "?" };
+        url.push_str(&format!(
+            "{sep}sslcert={cert}&sslkey={key}&sslrootcert={ca}"
+        ));
+    }
+    url
 }
 
 /// Compute exponential backoff duration.

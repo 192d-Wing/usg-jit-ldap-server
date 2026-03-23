@@ -52,21 +52,25 @@ pub struct DatabaseAuthenticator {
     bind_ip_rate_limiter: BindIpRateLimiter,
     audit: AuditLogger,
     /// Socket address of the current connection, used for audit logging.
-    /// Set per-connection when constructing the authenticator.
     peer_addr: SocketAddr,
+    /// Client certificate subject DN from the TLS handshake, if presented.
+    /// Used to enforce per-user `require_client_cert` policy.
+    client_cert_dn: Option<String>,
 }
 
 impl DatabaseAuthenticator {
     /// Create a new authenticator for a specific client connection.
     ///
     /// Each connection gets its own authenticator instance carrying the
-    /// peer address for audit attribution.
+    /// peer address and optional client cert DN for audit attribution
+    /// and per-user mTLS enforcement.
     pub fn new(
         pool: Arc<PgPool>,
         rate_limiter: RateLimiter,
         bind_ip_rate_limiter: BindIpRateLimiter,
         audit: AuditLogger,
         peer_addr: SocketAddr,
+        client_cert_dn: Option<String>,
     ) -> Self {
         Self {
             pool,
@@ -74,6 +78,7 @@ impl DatabaseAuthenticator {
             bind_ip_rate_limiter,
             audit,
             peer_addr,
+            client_cert_dn,
         }
     }
 }
@@ -121,7 +126,7 @@ impl Authenticator for DatabaseAuthenticator {
             // Step 2: Look up user by DN in identity schema.
             let user = match sqlx::query_as::<_, UserRow>(
                 r#"
-                SELECT id, username, dn, enabled
+                SELECT id, username, dn, enabled, require_client_cert
                 FROM identity.users
                 WHERE dn = $1
                 "#,
@@ -163,6 +168,22 @@ impl Authenticator for DatabaseAuthenticator {
                     return AuthResult::InternalError("internal error".to_string());
                 }
             };
+
+            // NIST IA-3: Per-user client certificate enforcement.
+            // If the user requires mTLS but no client cert was presented,
+            // reject the bind with the same generic error as other failures.
+            if user.require_client_cert && self.client_cert_dn.is_none() {
+                tracing::warn!(
+                    dn = %dn,
+                    peer = %self.peer_addr,
+                    "bind: user requires client certificate but none presented"
+                );
+                self.record_failure(dn, "invalid_credentials").await;
+                let event =
+                    AuditEvent::bind_attempt(self.peer_addr, dn, BindOutcome::InvalidCredentials);
+                self.audit.log(event).await;
+                return AuthResult::InvalidCredentials;
+            }
 
             // Check user is enabled.
             if !user.enabled {
@@ -379,6 +400,7 @@ struct UserRow {
     username: String,
     dn: String,
     enabled: bool,
+    require_client_cert: bool,
 }
 
 #[derive(Debug, sqlx::FromRow)]

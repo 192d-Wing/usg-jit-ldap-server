@@ -18,6 +18,11 @@ must be resolved before merge.
   accept "1.0", "1.1", or "1.2" as valid `min_version` values.
 - [ ] Cipher suite selection uses rustls defaults (AEAD-only). No custom cipher
   suite configuration that could weaken the selection.
+- [ ] [CRITICAL] Mutual TLS is mandatory. The `build_server_config()` function uses
+  `WebPkiClientVerifier` with the configured CA certificate. Clients without valid
+  certificates are rejected at the TLS handshake.
+- [ ] Client certificate subject DN is extracted after handshake and included in
+  the `ConnectionOpened` audit event and `LdapSession` for attribution.
 - [ ] Certificate metadata is logged (chain position, size). Private key material
   is NEVER logged.
 

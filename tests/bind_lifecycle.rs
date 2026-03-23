@@ -27,6 +27,7 @@ async fn test_full_bind_lifecycle() {
         usg_jit_ldap_server::auth::rate_limit::BindIpRateLimiter::new(pool_arc.clone(), 50, 300),
         audit,
         peer_addr,
+        None,
     );
 
     use usg_jit_ldap_server::ldap::bind::Authenticator;
@@ -46,6 +47,7 @@ async fn test_full_bind_lifecycle() {
         usg_jit_ldap_server::auth::rate_limit::BindIpRateLimiter::new(pool_arc.clone(), 50, 300),
         usg_jit_ldap_server::audit::AuditLogger::tracing_only(),
         peer_addr,
+        None,
     );
     let result2 = auth2.authenticate(dn, b"correct-password").await;
     assert!(
@@ -78,6 +80,7 @@ async fn test_bind_with_expired_password() {
         usg_jit_ldap_server::auth::rate_limit::BindIpRateLimiter::new(pool_arc.clone(), 50, 300),
         usg_jit_ldap_server::audit::AuditLogger::tracing_only(),
         common::test_addr(),
+        None,
     );
 
     use usg_jit_ldap_server::ldap::bind::Authenticator;
@@ -117,6 +120,7 @@ async fn test_bind_with_disabled_user() {
         usg_jit_ldap_server::auth::rate_limit::BindIpRateLimiter::new(pool_arc.clone(), 50, 300),
         usg_jit_ldap_server::audit::AuditLogger::tracing_only(),
         common::test_addr(),
+        None,
     );
 
     use usg_jit_ldap_server::ldap::bind::Authenticator;

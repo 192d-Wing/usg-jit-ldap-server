@@ -539,13 +539,13 @@ mod tests {
     }
 
     fn make_broker_session() -> LdapSession {
-        let mut session = LdapSession::new(test_addr());
+        let mut session = LdapSession::new(test_addr(), None);
         session.transition_to_bound("cn=broker,ou=services,dc=example,dc=com".into());
         session
     }
 
     fn make_user_session() -> LdapSession {
-        let mut session = LdapSession::new(test_addr());
+        let mut session = LdapSession::new(test_addr(), None);
         session.transition_to_bound("cn=normaluser,dc=example,dc=com".into());
         session
     }
@@ -609,7 +609,7 @@ mod tests {
     #[tokio::test]
     async fn test_unbound_session_rejected() {
         let handler = PasswordModifyHandler::new(PlaceholderPasswordStore, make_authorizer());
-        let session = LdapSession::new(test_addr()); // not bound
+        let session = LdapSession::new(test_addr(), None); // not bound
         let req = ExtendedRequest {
             request_name: PASSWORD_MODIFY_OID.into(),
             request_value: Some(build_passwd_modify_value(

@@ -340,10 +340,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 }
                             };
 
-                            tracing::info!(peer = %peer_addr, "TLS handshake complete");
+                            // Extract client certificate DN for audit attribution (NIST IA-3).
+                            let client_cert_dn: Option<String> = tls_stream
+                                .get_ref()
+                                .1
+                                .peer_certificates()
+                                .and_then(|certs| certs.first())
+                                .and_then(|cert| {
+                                    x509_parser::parse_x509_certificate(cert.as_ref())
+                                        .ok()
+                                        .map(|(_, parsed)| parsed.subject().to_string())
+                                });
+
+                            tracing::info!(
+                                peer = %peer_addr,
+                                client_cert_dn = ?client_cert_dn,
+                                "TLS handshake complete (mTLS verified)"
+                            );
                             audit.log(AuditEvent::ConnectionOpened {
                                 timestamp: chrono::Utc::now(),
                                 source_addr: peer_addr.to_string(),
+                                client_cert_dn: client_cert_dn.clone(),
                             }).await;
 
                             // Handle the LDAP connection.
@@ -359,6 +376,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 password_ttl,
                                 idle_timeout,
                                 max_lifetime,
+                                client_cert_dn,
                             ).await;
                             drop(permit);
                         });
@@ -406,6 +424,7 @@ async fn handle_connection(
     password_ttl: u64,
     idle_timeout_secs: u64,
     max_session_lifetime_secs: u64,
+    client_cert_dn: Option<String>,
 ) {
     let connection_start = Instant::now();
 
@@ -418,6 +437,7 @@ async fn handle_connection(
         bind_ip_rate_limiter,
         audit.clone(),
         peer_addr,
+        client_cert_dn.clone(),
     );
     let search_backend = DatabaseSearchBackend::new(pool.clone(), search_rate_limiter, peer_addr);
     let password_store = DatabasePasswordStore::new(pool.clone(), password_ttl);
@@ -433,7 +453,7 @@ async fn handle_connection(
     );
 
     // Create the session state machine for this connection.
-    let mut session = LdapSession::new(peer_addr);
+    let mut session = LdapSession::new(peer_addr, client_cert_dn);
 
     // Create the BER codec for framing.
     let codec = LdapCodec::new();

@@ -280,7 +280,7 @@ mod tests {
     #[tokio::test]
     async fn test_successful_bind() {
         let handler = BindHandler::new(PlaceholderAuthenticator);
-        let mut session = LdapSession::new(test_addr());
+        let mut session = LdapSession::new(test_addr(), None);
         let req = BindRequest {
             version: 3,
             name: "cn=admin,dc=example,dc=com".into(),
@@ -294,7 +294,7 @@ mod tests {
     #[tokio::test]
     async fn test_anonymous_bind_rejected() {
         let handler = BindHandler::new(PlaceholderAuthenticator);
-        let mut session = LdapSession::new(test_addr());
+        let mut session = LdapSession::new(test_addr(), None);
         let req = BindRequest {
             version: 3,
             name: String::new(),
@@ -308,7 +308,7 @@ mod tests {
     #[tokio::test]
     async fn test_empty_password_rejected() {
         let handler = BindHandler::new(PlaceholderAuthenticator);
-        let mut session = LdapSession::new(test_addr());
+        let mut session = LdapSession::new(test_addr(), None);
         let req = BindRequest {
             version: 3,
             name: "cn=admin".into(),
@@ -321,7 +321,7 @@ mod tests {
     #[tokio::test]
     async fn test_version2_rejected() {
         let handler = BindHandler::new(PlaceholderAuthenticator);
-        let mut session = LdapSession::new(test_addr());
+        let mut session = LdapSession::new(test_addr(), None);
         let req = BindRequest {
             version: 2,
             name: "cn=admin".into(),
@@ -334,7 +334,7 @@ mod tests {
     #[tokio::test]
     async fn test_sasl_rejected() {
         let handler = BindHandler::new(PlaceholderAuthenticator);
-        let mut session = LdapSession::new(test_addr());
+        let mut session = LdapSession::new(test_addr(), None);
         let req = BindRequest {
             version: 3,
             name: "cn=admin".into(),
@@ -347,7 +347,7 @@ mod tests {
     #[tokio::test]
     async fn test_failed_auth() {
         let handler = BindHandler::new(RejectAuthenticator);
-        let mut session = LdapSession::new(test_addr());
+        let mut session = LdapSession::new(test_addr(), None);
         let req = BindRequest {
             version: 3,
             name: "cn=admin".into(),

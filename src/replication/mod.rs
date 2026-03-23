@@ -77,6 +77,13 @@ pub struct ReplicationConfig {
     /// Maximum number of changes to fetch per pull cycle.
     /// Default: 1000.
     pub batch_size: i64,
+
+    /// Path to client certificate PEM file for mTLS to central hub (NIST IA-3).
+    pub client_cert_path: Option<String>,
+    /// Path to client private key PEM file for mTLS to central hub.
+    pub client_key_path: Option<String>,
+    /// Path to CA certificate PEM file for verifying central hub's server cert.
+    pub ca_cert_path: Option<String>,
 }
 
 impl Default for ReplicationConfig {
@@ -90,6 +97,9 @@ impl Default for ReplicationConfig {
             retry_backoff_base_secs: 5,
             stale_threshold: Duration::from_secs(3600),
             batch_size: 1000,
+            client_cert_path: None,
+            client_key_path: None,
+            ca_cert_path: None,
         }
     }
 }
@@ -151,6 +161,9 @@ impl ReplicationConfig {
             retry_backoff_base_secs: 5,
             stale_threshold: Duration::from_secs(settings.stale_threshold_secs),
             batch_size: settings.batch_size,
+            client_cert_path: settings.client_cert_path.clone(),
+            client_key_path: settings.client_key_path.clone(),
+            ca_cert_path: settings.ca_cert_path.clone(),
         }
     }
 }
@@ -219,6 +232,7 @@ pub struct UserRecord {
     pub display_name: Option<String>,
     pub email: Option<String>,
     pub enabled: bool,
+    pub require_client_cert: bool,
     pub updated_at: chrono::DateTime<chrono::Utc>,
 }
 

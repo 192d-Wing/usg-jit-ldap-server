@@ -23,6 +23,7 @@ async fn test_password_ttl_enforcement() {
         usg_jit_ldap_server::auth::rate_limit::BindIpRateLimiter::new(pool_arc.clone(), 50, 300),
         usg_jit_ldap_server::audit::AuditLogger::tracing_only(),
         common::test_addr(),
+        None,
     );
 
     use usg_jit_ldap_server::ldap::bind::Authenticator;
@@ -63,6 +64,7 @@ async fn test_revoked_password_rejected() {
         usg_jit_ldap_server::auth::rate_limit::BindIpRateLimiter::new(pool_arc.clone(), 50, 300),
         usg_jit_ldap_server::audit::AuditLogger::tracing_only(),
         common::test_addr(),
+        None,
     );
 
     use usg_jit_ldap_server::ldap::bind::Authenticator;

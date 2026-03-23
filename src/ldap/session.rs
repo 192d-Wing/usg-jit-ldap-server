@@ -57,19 +57,23 @@ pub struct LdapSession {
     state: SessionState,
     peer_addr: SocketAddr,
     message_counter: u64,
+    /// Subject DN from the client's mTLS certificate, if presented.
+    client_cert_dn: Option<String>,
 }
 
 impl LdapSession {
     /// Create a new session for an incoming TLS connection.
-    pub fn new(peer_addr: SocketAddr) -> Self {
+    pub fn new(peer_addr: SocketAddr, client_cert_dn: Option<String>) -> Self {
         tracing::info!(
             peer = %peer_addr,
+            client_cert_dn = ?client_cert_dn,
             "new LDAP session (state: Connected)"
         );
         Self {
             state: SessionState::Connected,
             peer_addr,
             message_counter: 0,
+            client_cert_dn,
         }
     }
 
@@ -95,6 +99,12 @@ impl LdapSession {
     #[must_use]
     pub fn is_bound(&self) -> bool {
         matches!(self.state, SessionState::Bound(_))
+    }
+
+    /// Returns the client certificate subject DN, if mTLS was used.
+    #[must_use]
+    pub fn client_cert_dn(&self) -> Option<&str> {
+        self.client_cert_dn.as_deref()
     }
 
     /// Returns the bind info if the session is bound, or `None`.
@@ -384,14 +394,14 @@ mod tests {
 
     #[test]
     fn test_new_session_is_connected() {
-        let session = LdapSession::new(test_addr());
+        let session = LdapSession::new(test_addr(), None);
         assert!(matches!(session.state(), SessionState::Connected));
         assert!(!session.is_bound());
     }
 
     #[test]
     fn test_session_bind_rejects_without_handler() {
-        let mut session = LdapSession::new(test_addr());
+        let mut session = LdapSession::new(test_addr(), None);
         let msg = LdapMessage {
             message_id: 1,
             protocol_op: ProtocolOp::BindRequest(BindRequest {
@@ -414,7 +424,7 @@ mod tests {
 
     #[test]
     fn test_search_before_bind_rejected() {
-        let mut session = LdapSession::new(test_addr());
+        let mut session = LdapSession::new(test_addr(), None);
         let msg = LdapMessage {
             message_id: 2,
             protocol_op: ProtocolOp::SearchRequest(super::super::codec::SearchRequest {
@@ -435,7 +445,7 @@ mod tests {
 
     #[test]
     fn test_anonymous_bind_rejected() {
-        let mut session = LdapSession::new(test_addr());
+        let mut session = LdapSession::new(test_addr(), None);
         let msg = LdapMessage {
             message_id: 1,
             protocol_op: ProtocolOp::BindRequest(BindRequest {
@@ -457,7 +467,7 @@ mod tests {
 
     #[test]
     fn test_unbind_closes_session() {
-        let mut session = LdapSession::new(test_addr());
+        let mut session = LdapSession::new(test_addr(), None);
         // Manually transition to bound (session dispatch no longer auto-authenticates).
         session.transition_to_bound("cn=admin".into());
         assert!(session.is_bound());
@@ -473,7 +483,7 @@ mod tests {
 
     #[test]
     fn test_version2_rejected() {
-        let mut session = LdapSession::new(test_addr());
+        let mut session = LdapSession::new(test_addr(), None);
         let msg = LdapMessage {
             message_id: 1,
             protocol_op: ProtocolOp::BindRequest(BindRequest {

@@ -9,6 +9,12 @@ TEST_DN="cn=testuser,ou=users,dc=example,dc=com"
 TEST_PASS="testpassword123"
 BASE_DN="dc=example,dc=com"
 
+# mTLS client certificate paths (mounted from tests/e2e/certs/)
+LDAPTLS_CACERT="/e2e/certs/ca.crt"
+LDAPTLS_CERT="/e2e/certs/client.crt"
+LDAPTLS_KEY="/e2e/certs/client.key"
+export LDAPTLS_CACERT LDAPTLS_CERT LDAPTLS_KEY
+
 PASS=0
 FAIL=0
 SKIP=0
@@ -37,7 +43,8 @@ fi
 
 echo ""
 echo "=== Test 2: TLS 1.3 connection ==="
-TLS_RESULT=$(echo Q | openssl s_client -connect ${LDAP_HOST}:${LDAP_PORT} -tls1_3 2>&1)
+TLS_RESULT=$(echo Q | openssl s_client -connect ${LDAP_HOST}:${LDAP_PORT} -tls1_3 \
+    -CAfile ${LDAPTLS_CACERT} -cert ${LDAPTLS_CERT} -key ${LDAPTLS_KEY} 2>&1)
 if echo "$TLS_RESULT" | grep -qi "new.*tls1.3\|protocol.*tlsv1.3\|tls_aes"; then
     result "PASS" "TLS 1.3 connection established"
 elif echo "$TLS_RESULT" | grep -qi "connected"; then
@@ -49,7 +56,8 @@ fi
 
 echo ""
 echo "=== Test 3: TLS 1.2 rejection ==="
-TLS12=$(echo Q | openssl s_client -connect ${LDAP_HOST}:${LDAP_PORT} -tls1_2 2>&1)
+TLS12=$(echo Q | openssl s_client -connect ${LDAP_HOST}:${LDAP_PORT} -tls1_2 \
+    -CAfile ${LDAPTLS_CACERT} -cert ${LDAPTLS_CERT} -key ${LDAPTLS_KEY} 2>&1)
 if echo "$TLS12" | grep -qi "alert\|error\|handshake failure\|wrong version\|incompatible"; then
     result "PASS" "TLS 1.2 correctly rejected"
 else
@@ -60,7 +68,7 @@ echo ""
 echo "=== Test 4: LDAP Bind + Subtree Search ==="
 # This single ldapsearch call tests both bind and search in one connection.
 # The ephemeral password is consumed by this bind (one-time use).
-SEARCH_RESULT=$(LDAPTLS_REQCERT=never ldapsearch -H ldaps://${LDAP_HOST}:${LDAP_PORT} \
+SEARCH_RESULT=$(ldapsearch -H ldaps://${LDAP_HOST}:${LDAP_PORT} \
     -D "$TEST_DN" -w "$TEST_PASS" \
     -b "$BASE_DN" -x -s sub "(objectClass=*)" cn uid mail 2>&1)
 SEARCH_EXIT=$?
@@ -75,7 +83,7 @@ fi
 
 echo ""
 echo "=== Test 5: Anonymous bind rejection ==="
-ANON_RESULT=$(LDAPTLS_REQCERT=never ldapsearch -H ldaps://${LDAP_HOST}:${LDAP_PORT} \
+ANON_RESULT=$(ldapsearch -H ldaps://${LDAP_HOST}:${LDAP_PORT} \
     -x -b "$BASE_DN" "(objectClass=*)" 2>&1)
 ANON_EXIT=$?
 if [ $ANON_EXIT -ne 0 ]; then
@@ -86,7 +94,7 @@ fi
 
 echo ""
 echo "=== Test 6: Wrong password rejection ==="
-WRONG_RESULT=$(LDAPTLS_REQCERT=never ldapsearch -H ldaps://${LDAP_HOST}:${LDAP_PORT} \
+WRONG_RESULT=$(ldapsearch -H ldaps://${LDAP_HOST}:${LDAP_PORT} \
     -D "$TEST_DN" -w "wrongpassword" \
     -b "$BASE_DN" -x "(objectClass=*)" 2>&1)
 WRONG_EXIT=$?
@@ -99,7 +107,7 @@ fi
 echo ""
 echo "=== Test 7: Password one-time use enforcement ==="
 # Test 4 consumed the password. A second bind should fail.
-REUSE_RESULT=$(LDAPTLS_REQCERT=never ldapsearch -H ldaps://${LDAP_HOST}:${LDAP_PORT} \
+REUSE_RESULT=$(ldapsearch -H ldaps://${LDAP_HOST}:${LDAP_PORT} \
     -D "$TEST_DN" -w "$TEST_PASS" \
     -b "$BASE_DN" -x -s base "(objectClass=*)" dn 2>&1)
 REUSE_EXIT=$?

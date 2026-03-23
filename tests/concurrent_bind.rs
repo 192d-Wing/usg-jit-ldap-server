@@ -39,6 +39,7 @@ async fn test_concurrent_bind_same_password() {
                 usg_jit_ldap_server::auth::rate_limit::BindIpRateLimiter::new(pool, 50, 300),
                 audit,
                 peer,
+                None,
             );
             auth.authenticate(&dn, b"one-time-pass").await
         }));

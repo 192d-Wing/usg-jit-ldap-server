@@ -3,6 +3,7 @@
 //! Verifies that the server's TLS configuration:
 //! - Only accepts TLS 1.3
 //! - Rejects connections without valid certificates at startup
+//! - Enforces mutual TLS (client certificate required)
 //! - Does not support StartTLS
 
 use rcgen::generate_simple_self_signed;
@@ -16,8 +17,13 @@ fn generate_test_certs() -> (Vec<u8>, Vec<u8>) {
     (cert_pem, key_pem)
 }
 
-/// Write test certs to temp files and return paths.
-fn write_test_certs() -> (tempfile::NamedTempFile, tempfile::NamedTempFile) {
+/// Write test certs to temp files and return paths (cert, key, ca).
+/// The self-signed cert doubles as its own CA for testing.
+fn write_test_certs() -> (
+    tempfile::NamedTempFile,
+    tempfile::NamedTempFile,
+    tempfile::NamedTempFile,
+) {
     let (cert_pem, key_pem) = generate_test_certs();
 
     let mut cert_file = tempfile::NamedTempFile::new().unwrap();
@@ -26,7 +32,11 @@ fn write_test_certs() -> (tempfile::NamedTempFile, tempfile::NamedTempFile) {
     let mut key_file = tempfile::NamedTempFile::new().unwrap();
     std::io::Write::write_all(&mut key_file, &key_pem).unwrap();
 
-    (cert_file, key_file)
+    // Use the self-signed cert as the CA cert for mTLS testing.
+    let mut ca_file = tempfile::NamedTempFile::new().unwrap();
+    std::io::Write::write_all(&mut ca_file, &cert_pem).unwrap();
+
+    (cert_file, key_file, ca_file)
 }
 
 #[test]
@@ -35,23 +45,31 @@ fn test_tls_acceptor_builds_with_valid_certs() {
     // where the default provider is not automatically selected).
     let _ = rustls::crypto::ring::default_provider().install_default();
 
-    let (cert_file, key_file) = write_test_certs();
+    let (cert_file, key_file, ca_file) = write_test_certs();
 
     let settings = usg_jit_ldap_server::config::TlsSettings {
+        require_client_cert: true,
         cert_path: cert_file.path().to_str().unwrap().to_string(),
         key_path: key_file.path().to_str().unwrap().to_string(),
+        ca_cert_path: ca_file.path().to_str().unwrap().to_string(),
         min_version: "1.3".to_string(),
     };
 
     let result = usg_jit_ldap_server::tls::build_tls_acceptor(&settings);
-    assert!(result.is_ok(), "TLS acceptor should build with valid certs");
+    assert!(
+        result.is_ok(),
+        "TLS acceptor should build with valid certs and CA: {:?}",
+        result.err()
+    );
 }
 
 #[test]
 fn test_tls_acceptor_fails_without_cert_file() {
     let settings = usg_jit_ldap_server::config::TlsSettings {
+        require_client_cert: true,
         cert_path: "/nonexistent/cert.pem".to_string(),
         key_path: "/nonexistent/key.pem".to_string(),
+        ca_cert_path: "/nonexistent/ca.pem".to_string(),
         min_version: "1.3".to_string(),
     };
 
@@ -64,11 +82,13 @@ fn test_tls_acceptor_fails_without_cert_file() {
 
 #[test]
 fn test_tls_12_rejected() {
-    let (cert_file, key_file) = write_test_certs();
+    let (cert_file, key_file, ca_file) = write_test_certs();
 
     let settings = usg_jit_ldap_server::config::TlsSettings {
+        require_client_cert: true,
         cert_path: cert_file.path().to_str().unwrap().to_string(),
         key_path: key_file.path().to_str().unwrap().to_string(),
+        ca_cert_path: ca_file.path().to_str().unwrap().to_string(),
         min_version: "1.2".to_string(),
     };
 
@@ -81,11 +101,13 @@ fn test_tls_12_rejected() {
 
 #[test]
 fn test_tls_10_rejected() {
-    let (cert_file, key_file) = write_test_certs();
+    let (cert_file, key_file, ca_file) = write_test_certs();
 
     let settings = usg_jit_ldap_server::config::TlsSettings {
+        require_client_cert: true,
         cert_path: cert_file.path().to_str().unwrap().to_string(),
         key_path: key_file.path().to_str().unwrap().to_string(),
+        ca_cert_path: ca_file.path().to_str().unwrap().to_string(),
         min_version: "1.0".to_string(),
     };
 

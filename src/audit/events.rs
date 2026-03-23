@@ -110,6 +110,8 @@ pub enum AuditEvent {
     ConnectionOpened {
         timestamp: DateTime<Utc>,
         source_addr: String,
+        /// Subject DN from the client's mTLS certificate.
+        client_cert_dn: Option<String>,
     },
 
     /// A connection was closed.

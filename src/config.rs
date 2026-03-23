@@ -116,9 +116,27 @@ pub struct TlsSettings {
     /// Path to the PEM-encoded private key.
     pub key_path: String,
 
+    /// Path to PEM-encoded CA certificate(s) for verifying client certificates.
+    /// When present, client certificates signed by this CA are accepted.
+    /// NIST IA-3: Device identification and authentication.
+    pub ca_cert_path: String,
+
+    /// Whether client certificates are required for all connections.
+    /// - `true` (default): mTLS is mandatory — connections without a valid
+    ///   client certificate are rejected at the TLS layer.
+    /// - `false`: client certificates are optional — clients without certs
+    ///   can still authenticate via LDAP Simple Bind with password. Certs
+    ///   are still verified when presented.
+    #[serde(default = "default_require_client_cert")]
+    pub require_client_cert: bool,
+
     /// Minimum TLS version. Default: "1.3". Only "1.3" is accepted.
     #[serde(default = "default_min_tls_version")]
     pub min_version: String,
+}
+
+fn default_require_client_cert() -> bool {
+    true
 }
 
 fn default_min_tls_version() -> String {
@@ -168,6 +186,18 @@ pub struct ReplicationSettings {
     /// Staleness threshold in seconds. Default: 3600 (1 hour).
     #[serde(default = "default_stale_threshold_secs")]
     pub stale_threshold_secs: u64,
+
+    /// Path to client certificate PEM file for mTLS to central hub.
+    /// Required when replication is enabled (NIST IA-3).
+    pub client_cert_path: Option<String>,
+
+    /// Path to client private key PEM file for mTLS to central hub.
+    /// Required when replication is enabled (NIST IA-3).
+    pub client_key_path: Option<String>,
+
+    /// Path to CA certificate PEM file for verifying central hub's server cert.
+    /// Required when replication is enabled (NIST SC-8).
+    pub ca_cert_path: Option<String>,
 }
 
 fn default_pull_interval_secs() -> u64 {
@@ -428,6 +458,14 @@ fn validate(config: &ServerConfig) -> Result<(), ConfigError> {
         )));
     }
 
+    // NIST IA-3: CA certificate for mTLS client verification must exist.
+    if !Path::new(&config.tls.ca_cert_path).exists() {
+        return Err(ConfigError::Validation(format!(
+            "TLS CA certificate file not found: {}",
+            config.tls.ca_cert_path
+        )));
+    }
+
     // Validate minimum TLS version.
     match config.tls.min_version.as_str() {
         "1.3" => {}
@@ -551,6 +589,27 @@ fn validate(config: &ServerConfig) -> Result<(), ConfigError> {
                 "site_id is required when replication is enabled".into(),
             ));
         }
+        // NIST IA-3: mTLS certificates required for replication.
+        for (field, label) in [
+            (&config.replication.client_cert_path, "client_cert_path"),
+            (&config.replication.client_key_path, "client_key_path"),
+            (&config.replication.ca_cert_path, "ca_cert_path"),
+        ] {
+            match field {
+                Some(path) if !path.is_empty() => {
+                    if !Path::new(path).exists() {
+                        return Err(ConfigError::Validation(format!(
+                            "replication {label} file not found: {path}"
+                        )));
+                    }
+                }
+                _ => {
+                    return Err(ConfigError::Validation(format!(
+                        "replication {label} is required when replication is enabled (NIST IA-3)"
+                    )));
+                }
+            }
+        }
     }
 
     Ok(())
@@ -573,6 +632,7 @@ port = 636
 [tls]
 cert_path = "/tmp/test-cert.pem"
 key_path = "/tmp/test-key.pem"
+ca_cert_path = "/tmp/test-ca.pem"
 
 [database]
 url = "postgresql://localhost/test?sslmode=require"

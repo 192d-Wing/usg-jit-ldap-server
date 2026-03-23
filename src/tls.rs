@@ -19,6 +19,8 @@ use std::sync::Arc;
 
 use rustls::ServerConfig;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
+use rustls::server::WebPkiClientVerifier;
+use rustls::RootCertStore;
 use rustls_pki_types::pem::PemObject;
 use thiserror::Error;
 use tokio_rustls::TlsAcceptor;
@@ -57,6 +59,18 @@ pub enum TlsError {
 
     #[error("unsupported minimum TLS version: '{0}'")]
     UnsupportedVersion(String),
+
+    #[error("failed to read CA certificate file '{path}': {source}")]
+    CaCertFileRead {
+        path: String,
+        source: rustls_pki_types::pem::Error,
+    },
+
+    #[error("no CA certificates found in '{0}'")]
+    NoCaCertificates(String),
+
+    #[error("failed to build client certificate verifier: {0}")]
+    ClientVerifierBuild(String),
 }
 
 // ---------------------------------------------------------------------------
@@ -101,9 +115,32 @@ pub fn build_tls_acceptor(config: &TlsSettings) -> Result<TlsAcceptor, TlsError>
         "loaded TLS private key (details not logged — NIST SC-12)"
     );
 
-    // Step 3: Build rustls ServerConfig.
-    // NIST SC-13: Only strong ciphersuites and TLS 1.2+ are permitted.
-    let tls_config = build_server_config(certs, key, &config.min_version)?;
+    // Step 3: Load CA certificates for client authentication (mTLS).
+    // NIST IA-3: Mutual TLS is mandatory — all clients must present valid certs.
+    let ca_certs = load_certificates(&config.ca_cert_path).map_err(|_| {
+        TlsError::CaCertFileRead {
+            path: config.ca_cert_path.clone(),
+            source: rustls_pki_types::pem::Error::NoItemsFound,
+        }
+    })?;
+    if ca_certs.is_empty() {
+        return Err(TlsError::NoCaCertificates(config.ca_cert_path.clone()));
+    }
+    tracing::info!(
+        ca_cert_path = %config.ca_cert_path,
+        ca_cert_count = ca_certs.len(),
+        "loaded CA certificate(s) for client verification"
+    );
+
+    // Step 4: Build rustls ServerConfig with client auth.
+    // NIST SC-13: Only strong ciphersuites and TLS 1.3 are permitted.
+    let tls_config = build_server_config(
+        certs,
+        key,
+        &config.min_version,
+        ca_certs,
+        config.require_client_cert,
+    )?;
 
     tracing::info!(
         min_tls_version = %config.min_version,
@@ -148,6 +185,8 @@ fn build_server_config(
     certs: Vec<CertificateDer<'static>>,
     key: PrivateKeyDer<'static>,
     min_version: &str,
+    ca_certs: Vec<CertificateDer<'static>>,
+    require_client_cert: bool,
 ) -> Result<ServerConfig, TlsError> {
     // Only TLS 1.3 is supported. TLS 1.2 is explicitly excluded.
     // NIST SC-13: Strongest available cryptographic protection.
@@ -162,8 +201,27 @@ fn build_server_config(
     // This is idempotent — if already installed, it's a no-op.
     let _ = rustls::crypto::ring::default_provider().install_default();
 
+    // Build client certificate verifier from CA certs.
+    // NIST IA-3: All clients must present a valid certificate.
+    let mut root_store = RootCertStore::empty();
+    for ca_cert in ca_certs {
+        root_store.add(ca_cert).map_err(|e| {
+            TlsError::ClientVerifierBuild(format!("failed to add CA cert to root store: {e}"))
+        })?;
+    }
+    let verifier_builder = WebPkiClientVerifier::builder(Arc::new(root_store));
+    let client_verifier = if require_client_cert {
+        // NIST IA-3: All clients must present a valid certificate.
+        verifier_builder.build()
+    } else {
+        // Client certs are optional — verified when presented, but
+        // password-only auth via LDAP Bind is also accepted.
+        verifier_builder.allow_unauthenticated().build()
+    }
+    .map_err(|e| TlsError::ClientVerifierBuild(e.to_string()))?;
+
     let config = ServerConfig::builder_with_protocol_versions(&[&rustls::version::TLS13])
-        .with_no_client_auth()
+        .with_client_cert_verifier(client_verifier)
         .with_single_cert(certs, key)?;
 
     Ok(config)
@@ -310,7 +368,7 @@ mod tests {
 
     #[test]
     fn test_unsupported_tls_version() {
-        let result = build_server_config(vec![], PrivateKeyDer::Pkcs8(vec![].into()), "1.0");
+        let result = build_server_config(vec![], PrivateKeyDer::Pkcs8(vec![].into()), "1.0", vec![], true);
         assert!(result.is_err());
     }
 }

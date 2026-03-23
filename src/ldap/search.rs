@@ -245,7 +245,7 @@ mod tests {
     }
 
     fn make_bound_session() -> LdapSession {
-        let mut session = LdapSession::new(test_addr());
+        let mut session = LdapSession::new(test_addr(), None);
         session.transition_to_bound("cn=testuser,dc=example,dc=com".into());
         session
     }
@@ -266,7 +266,7 @@ mod tests {
     #[tokio::test]
     async fn test_search_requires_bound_session() {
         let handler = SearchHandler::new(PlaceholderSearchBackend);
-        let session = LdapSession::new(test_addr()); // not bound
+        let session = LdapSession::new(test_addr(), None); // not bound
         let req = make_search_request();
         let (entries, result) = handler.handle_search(&req, &session).await;
         assert!(entries.is_empty());

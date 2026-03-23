@@ -274,7 +274,7 @@ mod tests {
     #[tokio::test]
     async fn test_full_bind_search_flow() {
         let handler = placeholder_handler();
-        let mut session = LdapSession::new(test_addr());
+        let mut session = LdapSession::new(test_addr(), None);
 
         // Bind.
         let bind_msg = LdapMessage {
@@ -323,7 +323,7 @@ mod tests {
     #[tokio::test]
     async fn test_search_before_bind_rejected() {
         let handler = placeholder_handler();
-        let mut session = LdapSession::new(test_addr());
+        let mut session = LdapSession::new(test_addr(), None);
         let search_msg = LdapMessage {
             message_id: 1,
             protocol_op: ProtocolOp::SearchRequest(codec::SearchRequest {
@@ -350,7 +350,7 @@ mod tests {
     #[tokio::test]
     async fn test_unbind_closes_session() {
         let handler = placeholder_handler();
-        let mut session = LdapSession::new(test_addr());
+        let mut session = LdapSession::new(test_addr(), None);
 
         // Bind first.
         handler
@@ -384,7 +384,7 @@ mod tests {
     #[tokio::test]
     async fn test_unknown_extended_op_rejected() {
         let handler = placeholder_handler();
-        let mut session = LdapSession::new(test_addr());
+        let mut session = LdapSession::new(test_addr(), None);
         // Bind.
         handler
             .process_message(

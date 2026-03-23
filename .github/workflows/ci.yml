@@ -81,15 +81,34 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Generate test TLS certificates
+      - name: Generate test TLS certificates (CA + server + client)
         run: |
           mkdir -p tests/e2e/certs
+          # Generate CA key and self-signed CA cert
           openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
-            -keyout tests/e2e/certs/server.key -out tests/e2e/certs/server.crt \
+            -keyout tests/e2e/certs/ca.key -out tests/e2e/certs/ca.crt \
             -days 1 -nodes \
-            -subj "/CN=ldap-server/O=USG JIT LDAP Test/C=US" \
-            -addext "subjectAltName=DNS:ldap-server,IP:127.0.0.1" 2>/dev/null
-          chmod 644 tests/e2e/certs/server.key
+            -subj "/CN=Test CA/O=USG JIT LDAP Test/C=US" 2>/dev/null
+          # Generate server key and CSR, sign with CA
+          openssl req -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+            -keyout tests/e2e/certs/server.key -out tests/e2e/certs/server.csr \
+            -nodes \
+            -subj "/CN=ldap-server/O=USG JIT LDAP Test/C=US" 2>/dev/null
+          openssl x509 -req -in tests/e2e/certs/server.csr \
+            -CA tests/e2e/certs/ca.crt -CAkey tests/e2e/certs/ca.key \
+            -CAcreateserial -out tests/e2e/certs/server.crt \
+            -days 1 \
+            -extfile <(printf "subjectAltName=DNS:ldap-server,IP:127.0.0.1") 2>/dev/null
+          # Generate client key and CSR, sign with CA
+          openssl req -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+            -keyout tests/e2e/certs/client.key -out tests/e2e/certs/client.csr \
+            -nodes \
+            -subj "/CN=e2e-test-client/O=USG JIT LDAP Test/C=US" 2>/dev/null
+          openssl x509 -req -in tests/e2e/certs/client.csr \
+            -CA tests/e2e/certs/ca.crt -CAkey tests/e2e/certs/ca.key \
+            -CAcreateserial -out tests/e2e/certs/client.crt \
+            -days 1 2>/dev/null
+          chmod 644 tests/e2e/certs/server.key tests/e2e/certs/client.key tests/e2e/certs/ca.key
       - name: Run e2e test stack
         run: |
           docker compose -f docker-compose.e2e.yml up \
