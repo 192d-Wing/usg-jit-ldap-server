@@ -17,10 +17,10 @@
 
 use std::sync::Arc;
 
+use rustls::RootCertStore;
 use rustls::ServerConfig;
 use rustls::pki_types::{CertificateDer, PrivateKeyDer};
 use rustls::server::WebPkiClientVerifier;
-use rustls::RootCertStore;
 use rustls_pki_types::pem::PemObject;
 use thiserror::Error;
 use tokio_rustls::TlsAcceptor;
@@ -117,12 +117,11 @@ pub fn build_tls_acceptor(config: &TlsSettings) -> Result<TlsAcceptor, TlsError>
 
     // Step 3: Load CA certificates for client authentication (mTLS).
     // NIST IA-3: Mutual TLS is mandatory — all clients must present valid certs.
-    let ca_certs = load_certificates(&config.ca_cert_path).map_err(|_| {
-        TlsError::CaCertFileRead {
+    let ca_certs =
+        load_certificates(&config.ca_cert_path).map_err(|_| TlsError::CaCertFileRead {
             path: config.ca_cert_path.clone(),
             source: rustls_pki_types::pem::Error::NoItemsFound,
-        }
-    })?;
+        })?;
     if ca_certs.is_empty() {
         return Err(TlsError::NoCaCertificates(config.ca_cert_path.clone()));
     }
@@ -356,7 +355,8 @@ mod tests {
 
     #[test]
     fn test_unsupported_tls_version() {
-        let result = build_server_config(vec![], PrivateKeyDer::Pkcs8(vec![].into()), "1.0", vec![]);
+        let result =
+            build_server_config(vec![], PrivateKeyDer::Pkcs8(vec![].into()), "1.0", vec![]);
         assert!(result.is_err());
     }
 }
