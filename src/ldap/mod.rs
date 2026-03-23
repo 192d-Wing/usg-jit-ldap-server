@@ -134,15 +134,18 @@ where
             }
             ProtocolOp::SearchRequest(req) => {
                 // NIST AU-2: Audit search operations for access tracking.
+                // Log filter STRUCTURE only (e.g., "EqualityMatch(uid)")
+                // — never log assertion values, which may contain secrets.
                 let bound_dn = session.bind_info().map_or("", |i| i.dn.as_str());
                 let scope_str = format!("{:?}", req.scope);
+                let filter_summary = summarize_filter(&req.filter);
                 self.audit
                     .log(AuditEvent::search_request(
                         session.peer_addr(),
                         bound_dn,
                         &req.base_object,
                         &scope_str,
-                        &format!("{:?}", req.filter),
+                        &filter_summary,
                     ))
                     .await;
 
@@ -232,6 +235,29 @@ where
                 )]
             }
         }
+    }
+}
+
+/// Produce a safe, value-free summary of a search filter for audit logging.
+///
+/// Logs filter STRUCTURE (attribute names, operators) but NEVER assertion
+/// values, which may contain passwords, API keys, or PII. This prevents
+/// sensitive data from leaking into audit logs and SIEM systems.
+fn summarize_filter(filter: &codec::Filter) -> String {
+    match filter {
+        codec::Filter::And(filters) => {
+            let inner: Vec<String> = filters.iter().map(summarize_filter).collect();
+            format!("(&{})", inner.join(""))
+        }
+        codec::Filter::Or(filters) => {
+            let inner: Vec<String> = filters.iter().map(summarize_filter).collect();
+            format!("(|{})", inner.join(""))
+        }
+        codec::Filter::Not(f) => format!("(!{})", summarize_filter(f)),
+        codec::Filter::EqualityMatch(ava) => format!("({}=*)", ava.attribute_desc),
+        codec::Filter::Substrings(sf) => format!("({}=*substr*)", sf.attribute_desc),
+        codec::Filter::Present(attr) => format!("({}=*)", attr),
+        codec::Filter::ApproxMatch(ava) => format!("({}~=*)", ava.attribute_desc),
     }
 }
 
