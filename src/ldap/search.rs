@@ -205,11 +205,11 @@ impl<B: SearchBackend> SearchHandler<B> {
 // ---------------------------------------------------------------------------
 
 /// A no-op search backend that always returns an empty result set.
-///
-/// The Runtime agent will replace this with the real PostgreSQL-backed
-/// implementation.
+/// Gated behind `#[cfg(test)]` to prevent accidental production use.
+#[cfg(test)]
 pub struct PlaceholderSearchBackend;
 
+#[cfg(test)]
 impl SearchBackend for PlaceholderSearchBackend {
     fn search<'a>(
         &'a self,

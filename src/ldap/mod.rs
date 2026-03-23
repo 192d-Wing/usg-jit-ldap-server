@@ -232,11 +232,12 @@ fn make_error_response(message_id: i32, code: ResultCode, diagnostic: &str) -> L
 }
 
 // ---------------------------------------------------------------------------
-// Convenience type alias for the placeholder wiring
+// Convenience type alias for the placeholder wiring — test-only
 // ---------------------------------------------------------------------------
 
 /// A fully-wired `LdapHandler` using placeholder backends.
-/// Useful for testing and development.
+/// Gated behind `#[cfg(test)]` to prevent accidental production use.
+#[cfg(test)]
 pub type PlaceholderLdapHandler = LdapHandler<
     bind::PlaceholderAuthenticator,
     search::PlaceholderSearchBackend,
@@ -245,6 +246,7 @@ pub type PlaceholderLdapHandler = LdapHandler<
 >;
 
 /// Create a placeholder `LdapHandler` for testing.
+#[cfg(test)]
 pub fn placeholder_handler() -> PlaceholderLdapHandler {
     LdapHandler::new(
         bind::PlaceholderAuthenticator,

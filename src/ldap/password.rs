@@ -500,8 +500,11 @@ impl<S: PasswordStore, A: BrokerAuthorizer> PasswordModifyHandler<S, A> {
 // ---------------------------------------------------------------------------
 
 /// A password store that always succeeds.
+/// Gated behind `#[cfg(test)]` to prevent accidental production use.
+#[cfg(test)]
 pub struct PlaceholderPasswordStore;
 
+#[cfg(test)]
 impl PasswordStore for PlaceholderPasswordStore {
     fn set_password<'a>(
         &'a self,
@@ -514,10 +517,13 @@ impl PasswordStore for PlaceholderPasswordStore {
 }
 
 /// A broker authorizer that accepts a fixed list of DNs.
+/// Test-only — production uses ConfigBrokerAuthorizer.
+#[cfg(test)]
 pub struct StaticBrokerAuthorizer {
     pub authorized_dns: Vec<String>,
 }
 
+#[cfg(test)]
 impl BrokerAuthorizer for StaticBrokerAuthorizer {
     fn is_authorized_broker(&self, dn: &str) -> bool {
         self.authorized_dns.iter().any(|d| d == dn)

@@ -231,16 +231,17 @@ impl<A: Authenticator> BindHandler<A> {
 }
 
 // ---------------------------------------------------------------------------
-// Placeholder authenticator for testing / development
+// Placeholder authenticator — test-only
 // ---------------------------------------------------------------------------
 
 /// A no-op authenticator that always returns success.
 ///
-/// This exists so that the protocol module can compile and be tested in
-/// isolation. The Runtime agent will replace this with the real implementation
-/// backed by the PostgreSQL runtime schema.
+/// Gated behind `#[cfg(test)]` to prevent accidental use in production.
+/// Using this in a production build is a compile error.
+#[cfg(test)]
 pub struct PlaceholderAuthenticator;
 
+#[cfg(test)]
 impl Authenticator for PlaceholderAuthenticator {
     fn authenticate<'a>(
         &'a self,

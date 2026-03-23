@@ -140,10 +140,11 @@ impl Authenticator for DatabaseAuthenticator {
                     // NIST IA-2: Perform dummy hash verification to prevent
                     // timing-based user enumeration. Without this, an attacker
                     // can distinguish "user exists" from "user not found" by
-                    // measuring response time.
+                    // measuring response time. Parameters MUST match production
+                    // hash parameters (m=65536,t=3,p=4) to prevent timing leaks.
                     let _ = password::verify_password(
                         password_bytes.to_vec(),
-                        "$argon2id$v=19$m=19456,t=2,p=1$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
+                        "$argon2id$v=19$m=65536,t=3,p=4$AAAAAAAAAAAAAAAAAAAAAA$AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",
                     );
                     tracing::warn!(dn = %dn, peer = %self.peer_addr, "bind: user not found");
                     self.record_failure(dn, "invalid_credentials").await;

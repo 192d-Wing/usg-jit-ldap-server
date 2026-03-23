@@ -221,8 +221,9 @@ mod tests {
     }
 
     #[test]
-    fn test_default_failure_policy_is_fail_open() {
+    fn test_default_failure_policy_is_fail_closed() {
+        // NIST AU-5: Default must be fail-closed to prevent audit trail gaps.
         let logger = AuditLogger::tracing_only();
-        assert_eq!(logger.failure_policy, AuditFailurePolicy::FailOpen);
+        assert_eq!(logger.failure_policy, AuditFailurePolicy::FailClosed);
     }
 }

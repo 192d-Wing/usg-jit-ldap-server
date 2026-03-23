@@ -590,9 +590,14 @@ pub fn decode_ldap_message(bytes: &[u8]) -> Result<(LdapMessage, usize)> {
 
     let mut iter = TlvIter::new(seq_value);
 
-    // messageID INTEGER
+    // messageID INTEGER (RFC 4511: 0 .. maxInt where maxInt = 2147483647)
     let (msg_id, _) = decode_integer(iter.remaining())?;
     let _ = iter.next_tlv(); // advance past the integer
+    if msg_id < 0 || msg_id > i32::MAX as i64 {
+        return Err(CodecError::InvalidFormat(format!(
+            "messageID {msg_id} out of range [0, 2147483647]"
+        )));
+    }
     let message_id = msg_id as i32;
 
     // protocolOp — peek at the tag to determine which operation
@@ -705,13 +710,23 @@ fn decode_search_request(value: &[u8]) -> Result<SearchRequest> {
     iter.next_tlv()?;
     let deref_aliases = DerefAliases::from_i64(deref_val)?;
 
-    // sizeLimit INTEGER
-    let (size_limit, _) = decode_integer(iter.remaining())?;
+    // sizeLimit INTEGER (RFC 4511: non-negative)
+    let (size_limit_raw, _) = decode_integer(iter.remaining())?;
     iter.next_tlv()?;
+    let size_limit = if size_limit_raw < 0 {
+        0i32
+    } else {
+        size_limit_raw.min(i32::MAX as i64) as i32
+    };
 
-    // timeLimit INTEGER
-    let (time_limit, _) = decode_integer(iter.remaining())?;
+    // timeLimit INTEGER (RFC 4511: non-negative)
+    let (time_limit_raw, _) = decode_integer(iter.remaining())?;
     iter.next_tlv()?;
+    let time_limit = if time_limit_raw < 0 {
+        0i32
+    } else {
+        time_limit_raw.min(i32::MAX as i64) as i32
+    };
 
     // typesOnly BOOLEAN
     let (types_only, _) = decode_boolean(iter.remaining())?;
@@ -737,6 +752,11 @@ fn decode_search_request(value: &[u8]) -> Result<SearchRequest> {
                 "attribute name must be OCTET STRING".into(),
             ));
         }
+        if attr_val.contains(&0) {
+            return Err(CodecError::InvalidFormat(
+                "embedded NULL byte in attribute name".into(),
+            ));
+        }
         let attr_str = String::from_utf8(attr_val.to_vec()).map_err(|_| CodecError::InvalidUtf8)?;
         attributes.push(attr_str);
         if attributes.len() > MAX_ATTRIBUTES {
@@ -750,8 +770,8 @@ fn decode_search_request(value: &[u8]) -> Result<SearchRequest> {
         base_object,
         scope,
         deref_aliases,
-        size_limit: size_limit as i32,
-        time_limit: time_limit as i32,
+        size_limit,
+        time_limit,
         types_only,
         filter,
         attributes,
@@ -837,6 +857,13 @@ fn decode_attribute_value_assertion(value: &[u8]) -> Result<AttributeValueAssert
             "AVA attributeDesc must be OCTET STRING".into(),
         ));
     }
+    // Reject embedded NULL bytes in attribute descriptions to prevent
+    // filter comparison bypasses (C-string truncation attacks).
+    if desc_val.contains(&0) {
+        return Err(CodecError::InvalidFormat(
+            "embedded NULL byte in AVA attributeDesc".into(),
+        ));
+    }
     let attribute_desc =
         String::from_utf8(desc_val.to_vec()).map_err(|_| CodecError::InvalidUtf8)?;
 
@@ -844,6 +871,12 @@ fn decode_attribute_value_assertion(value: &[u8]) -> Result<AttributeValueAssert
     if val_tag != TAG_OCTET_STRING {
         return Err(CodecError::InvalidFormat(
             "AVA assertionValue must be OCTET STRING".into(),
+        ));
+    }
+    // Reject embedded NULL bytes in assertion values.
+    if val_val.contains(&0) {
+        return Err(CodecError::InvalidFormat(
+            "embedded NULL byte in AVA assertionValue".into(),
         ));
     }
     Ok(AttributeValueAssertion {
@@ -859,6 +892,11 @@ fn decode_substring_filter(value: &[u8]) -> Result<SubstringFilter> {
     if type_tag != TAG_OCTET_STRING {
         return Err(CodecError::InvalidFormat(
             "SubstringFilter type must be OCTET STRING".into(),
+        ));
+    }
+    if type_val.contains(&0) {
+        return Err(CodecError::InvalidFormat(
+            "embedded NULL byte in SubstringFilter attribute".into(),
         ));
     }
     let attribute_desc =

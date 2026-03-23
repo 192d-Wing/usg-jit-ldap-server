@@ -350,7 +350,7 @@ impl ReplicationPuller {
         &self,
     ) -> Result<i64, Box<dyn std::error::Error + Send + Sync>> {
         let row: Option<(i64,)> = sqlx::query_as(
-            "SELECT last_sequence_number FROM replication_metadata WHERE site_id = $1",
+            "SELECT last_sequence_number FROM identity.replication_metadata WHERE site_id = $1",
         )
         .bind(self.config.site_id)
         .fetch_optional(&self.local_pool)
@@ -361,7 +361,7 @@ impl ReplicationPuller {
             None => {
                 // First run: insert metadata row with sequence 0.
                 sqlx::query(
-                    "INSERT INTO replication_metadata (site_id, last_sequence_number) \
+                    "INSERT INTO identity.replication_metadata (site_id, last_sequence_number) \
                      VALUES ($1, 0) ON CONFLICT (site_id) DO NOTHING",
                 )
                 .bind(self.config.site_id)
@@ -467,20 +467,18 @@ impl ReplicationPuller {
             }
         }
 
-        // Sequence gap detection.
+        // Sequence gap detection — reject batch and require full resync.
+        // NIST SI-7: Gaps indicate log pruning, tampering, or data loss.
+        // Continuing with gaps would silently lose identity changes.
         if let Some(first) = entries.first() {
             let expected_first = last_seq + 1;
             if first.seq_number != expected_first {
-                warn!(
-                    expected = expected_first,
-                    actual = first.seq_number,
-                    "NIST SI-7: sequence gap detected in replication log. \
-                     Expected seq {}, got {}. Possible log pruning or tampering.",
-                    expected_first,
-                    first.seq_number
-                );
-                // Log gap but continue — the data itself is still valid.
-                // Operators should investigate gaps via monitoring.
+                return Err(format!(
+                    "NIST SI-7: sequence gap detected — expected seq {}, got {}. \
+                     Full re-sync required to recover missing changes.",
+                    expected_first, first.seq_number
+                )
+                .into());
             }
         }
 
@@ -489,13 +487,12 @@ impl ReplicationPuller {
             let prev = window[0].seq_number;
             let curr = window[1].seq_number;
             if curr != prev + 1 {
-                warn!(
-                    prev_seq = prev,
-                    curr_seq = curr,
-                    "NIST SI-7: internal sequence gap in replication batch ({} -> {})",
-                    prev,
-                    curr
-                );
+                return Err(format!(
+                    "NIST SI-7: internal sequence gap in batch ({} -> {}). \
+                     Batch rejected — data integrity cannot be guaranteed.",
+                    prev, curr
+                )
+                .into());
             }
         }
 
@@ -694,15 +691,14 @@ impl ReplicationPuller {
                 ReplicationChange::UserUpsert(user) => {
                     sqlx::query(
                         "INSERT INTO identity.users \
-                            (user_id, username, dn, display_name, email, enabled, require_client_cert, updated_at) \
-                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
-                         ON CONFLICT (user_id) DO UPDATE SET \
+                            (id, username, dn, display_name, email, enabled, updated_at) \
+                         VALUES ($1, $2, $3, $4, $5, $6, $7) \
+                         ON CONFLICT (id) DO UPDATE SET \
                             username = EXCLUDED.username, \
                             dn = EXCLUDED.dn, \
                             display_name = EXCLUDED.display_name, \
                             email = EXCLUDED.email, \
                             enabled = EXCLUDED.enabled, \
-                            require_client_cert = EXCLUDED.require_client_cert, \
                             updated_at = EXCLUDED.updated_at",
                     )
                     .bind(user.user_id)
@@ -711,7 +707,6 @@ impl ReplicationPuller {
                     .bind(&user.display_name)
                     .bind(&user.email)
                     .bind(user.enabled)
-                    .bind(user.require_client_cert)
                     .bind(user.updated_at)
                     .execute(&mut **tx)
                     .await?;
@@ -726,7 +721,7 @@ impl ReplicationPuller {
                         .bind(user_id)
                         .execute(&mut **tx)
                         .await?;
-                    sqlx::query("DELETE FROM identity.users WHERE user_id = $1")
+                    sqlx::query("DELETE FROM identity.users WHERE id = $1")
                         .bind(user_id)
                         .execute(&mut **tx)
                         .await?;
@@ -734,9 +729,9 @@ impl ReplicationPuller {
                 ReplicationChange::GroupUpsert(group) => {
                     sqlx::query(
                         "INSERT INTO identity.groups \
-                            (group_id, group_name, dn, description, updated_at) \
+                            (id, group_name, dn, description, updated_at) \
                          VALUES ($1, $2, $3, $4, $5) \
-                         ON CONFLICT (group_id) DO UPDATE SET \
+                         ON CONFLICT (id) DO UPDATE SET \
                             group_name = EXCLUDED.group_name, \
                             dn = EXCLUDED.dn, \
                             description = EXCLUDED.description, \
@@ -756,7 +751,7 @@ impl ReplicationPuller {
                         .bind(group_id)
                         .execute(&mut **tx)
                         .await?;
-                    sqlx::query("DELETE FROM identity.groups WHERE group_id = $1")
+                    sqlx::query("DELETE FROM identity.groups WHERE id = $1")
                         .bind(group_id)
                         .execute(&mut **tx)
                         .await?;
@@ -831,10 +826,10 @@ impl ReplicationPuller {
         new_seq: i64,
     ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         sqlx::query(
-            "UPDATE replication_metadata \
+            "UPDATE identity.replication_metadata \
              SET last_sequence_number = $1, \
                  last_sync_at = now(), \
-                 last_error = NULL \
+                 sync_status = 'synced' \
              WHERE site_id = $2",
         )
         .bind(new_seq)
@@ -871,6 +866,22 @@ fn build_central_url(config: &super::ReplicationConfig) -> String {
         &config.client_key_path,
         &config.ca_cert_path,
     ) {
+        // Validate paths are absolute and contain no URL-special characters
+        // to prevent parameter injection via crafted config values.
+        for (name, path) in [("sslcert", cert), ("sslkey", key), ("sslrootcert", ca)] {
+            if !std::path::Path::new(path).is_absolute() {
+                tracing::error!(param = name, path = %path, "replication cert path must be absolute");
+                return url; // Return URL without mTLS params — connection will fail safely.
+            }
+            if path.contains('&') || path.contains('=') || path.contains('?') || path.contains(';')
+            {
+                tracing::error!(
+                    param = name,
+                    "replication cert path contains invalid characters"
+                );
+                return url;
+            }
+        }
         let sep = if url.contains('?') { "&" } else { "?" };
         url.push_str(&format!(
             "{sep}sslcert={cert}&sslkey={key}&sslrootcert={ca}"
@@ -918,10 +929,10 @@ pub async fn trigger_full_resync(
 
     // Reset sequence number to 0.
     sqlx::query(
-        "UPDATE replication_metadata \
+        "UPDATE identity.replication_metadata \
          SET last_sequence_number = 0, \
              last_sync_at = NULL, \
-             last_error = 'Full re-sync triggered' \
+             sync_status = 'stale' \
          WHERE site_id = $1",
     )
     .bind(site_id)

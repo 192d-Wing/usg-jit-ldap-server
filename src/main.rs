@@ -93,18 +93,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     ));
 
     // Step 3: Connect to PostgreSQL and run migrations.
-    // Resolve database URL: config value, or fallback to DATABASE_URL env var.
-    let db_url = if server_config.database.url.is_empty() {
-        std::env::var("DATABASE_URL").unwrap_or_else(|_| {
-            tracing::error!("no database URL configured and DATABASE_URL env var not set");
-            std::process::exit(1);
-        })
-    } else {
-        server_config.database.url.clone()
-    };
+    // NIST CM-6: Database URL must come from validated configuration only.
+    // Environment variable fallback is intentionally removed to prevent
+    // injection via DATABASE_URL in container/CI environments.
+    let db_url = &server_config.database.url;
+    if db_url.is_empty() {
+        tracing::error!("database.url is not configured — aborting");
+        return Err("database.url must be set in config file".into());
+    }
 
     tracing::info!("connecting to PostgreSQL");
-    let db_pool = match DbPool::connect(&db_url, server_config.database.max_connections).await {
+    let db_pool = match DbPool::connect(db_url, server_config.database.max_connections).await {
         Ok(pool) => pool,
         Err(e) => {
             tracing::error!(error = %e, "failed to connect to database — aborting");

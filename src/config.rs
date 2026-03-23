@@ -297,10 +297,11 @@ pub struct AuditSettings {
 #[serde(rename_all = "snake_case")]
 #[derive(Default)]
 pub enum AuditFailurePolicy {
-    /// Log warning, continue processing (current behavior).
-    #[default]
+    /// Log warning, continue processing.
     FailOpen,
     /// Return error, reject the operation.
+    /// NIST AU-5: Default to fail-closed to prevent audit trail gaps.
+    #[default]
     FailClosed,
 }
 
@@ -394,7 +395,10 @@ pub fn resolve_config_path() -> String {
 /// The path must be absolute to prevent path-traversal attacks in container
 /// or systemd environments where an attacker might control CLI arguments.
 pub fn load(path: &str) -> Result<ServerConfig, ConfigError> {
-    if !std::path::Path::new(path).is_absolute() && path != "config.toml" {
+    // NIST CM-6: Require absolute path to prevent CWD-poisoning attacks.
+    // No exceptions for relative paths — even "config.toml" must be absolute
+    // in production to prevent loading attacker-controlled files from CWD.
+    if !std::path::Path::new(path).is_absolute() {
         return Err(ConfigError::Validation(format!(
             "configuration path '{}' must be absolute (e.g. /etc/ldap-server/config.toml)",
             path
@@ -529,6 +533,12 @@ fn validate(config: &ServerConfig) -> Result<(), ConfigError> {
         return Err(ConfigError::Validation(format!(
             "rate_limit_window_secs must be <= 3600 (got {})",
             config.security.rate_limit_window_secs
+        )));
+    }
+    if config.security.max_searches_per_minute > 10000 {
+        return Err(ConfigError::Validation(format!(
+            "max_searches_per_minute must be <= 10000 (got {})",
+            config.security.max_searches_per_minute
         )));
     }
 
