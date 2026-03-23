@@ -1,0 +1,5 @@
+e2e/certs/*.key
+e2e/certs/*.csr
+e2e/certs/*.crt
+e2e/certs/*.pem
+e2e/certs/*.srl
