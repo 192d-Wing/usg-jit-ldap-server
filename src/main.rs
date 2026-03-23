@@ -488,16 +488,17 @@ async fn handle_connection(
                 break;
             }
             Ok(Ok(n)) => {
-                read_buf.extend_from_slice(&temp_buf[..n]);
-                // NIST SI-10: Reject if accumulated buffer exceeds max message size.
-                if read_buf.len() > ldap::codec::MAX_MESSAGE_SIZE + 1024 {
+                // NIST SI-10: Check buffer limit BEFORE appending to prevent
+                // temporary over-allocation from crafted partial messages.
+                if read_buf.len() + n > ldap::codec::MAX_MESSAGE_SIZE + 1024 {
                     tracing::warn!(
                         peer = %peer_addr,
-                        buf_size = read_buf.len(),
-                        "read buffer exceeds maximum — closing connection"
+                        buf_size = read_buf.len() + n,
+                        "read buffer would exceed maximum — closing connection"
                     );
                     break;
                 }
+                read_buf.extend_from_slice(&temp_buf[..n]);
             }
             Ok(Err(e)) => {
                 tracing::warn!(peer = %peer_addr, error = %e, "read error");

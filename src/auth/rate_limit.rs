@@ -81,14 +81,18 @@ impl RateLimiter {
     pub async fn check_and_increment(&self, dn: &str) -> Result<(), RateLimitError> {
         // SI-10: Validate input — DN must not be empty.
         if dn.is_empty() {
-            // Empty DN is already rejected at the protocol layer, but
-            // defense-in-depth: treat as rate-limited to prevent abuse.
             return Err(RateLimitError::Exceeded {
                 dn: dn.to_string(),
                 attempts: 0,
                 window_secs: self.window_secs,
             });
         }
+
+        // NIST AC-7: Normalize DN to lowercase before rate-limit lookup.
+        // LDAP attribute names are case-insensitive (RFC 4512 Section 2.5),
+        // so "cn=Alice" and "CN=Alice" must share the same rate-limit counter
+        // to prevent bypass via case variation.
+        let normalized_dn = dn.to_ascii_lowercase();
 
         // Atomically upsert and check the rate limit state.
         // If the window has expired, the counter resets to 1.
@@ -114,7 +118,7 @@ impl RateLimiter {
             RETURNING attempt_count
             "#,
         )
-        .bind(dn)
+        .bind(&normalized_dn)
         .bind(self.max_attempts as i32)
         .bind(self.window_secs as f64)
         .fetch_one(self.pool.as_ref())

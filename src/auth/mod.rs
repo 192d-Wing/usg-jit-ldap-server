@@ -105,7 +105,10 @@ impl Authenticator for DatabaseAuthenticator {
             // CPU exhaustion via repeated argon2 evaluations.
             if let Err(_e) = self.rate_limiter.check_and_increment(dn).await {
                 let event = AuditEvent::bind_attempt(self.peer_addr, dn, BindOutcome::RateLimited);
-                self.audit.log(event).await;
+                if let Err(e) = self.audit.log_checked(event).await {
+                    tracing::error!(error = %e, "NIST AU-5: audit persistence failed");
+                    return AuthResult::InternalError("audit subsystem unavailable".into());
+                }
                 return AuthResult::AccountLocked;
             }
 
@@ -119,7 +122,10 @@ impl Authenticator for DatabaseAuthenticator {
                 .await
             {
                 let event = AuditEvent::bind_attempt(self.peer_addr, dn, BindOutcome::RateLimited);
-                self.audit.log(event).await;
+                if let Err(e) = self.audit.log_checked(event).await {
+                    tracing::error!(error = %e, "NIST AU-5: audit persistence failed");
+                    return AuthResult::InternalError("audit subsystem unavailable".into());
+                }
                 return AuthResult::AccountLocked;
             }
 
@@ -153,7 +159,10 @@ impl Authenticator for DatabaseAuthenticator {
                         dn,
                         BindOutcome::InvalidCredentials,
                     );
-                    self.audit.log(event).await;
+                    if let Err(e) = self.audit.log_checked(event).await {
+                        tracing::error!(error = %e, "NIST AU-5: audit persistence failed");
+                        return AuthResult::InternalError("audit subsystem unavailable".into());
+                    }
                     return AuthResult::InvalidCredentials;
                 }
                 Err(e) => {
@@ -165,7 +174,10 @@ impl Authenticator for DatabaseAuthenticator {
                             detail: "identity lookup failed".to_string(),
                         },
                     );
-                    self.audit.log(event).await;
+                    if let Err(e) = self.audit.log_checked(event).await {
+                        tracing::error!(error = %e, "NIST AU-5: audit persistence failed");
+                        return AuthResult::InternalError("audit subsystem unavailable".into());
+                    }
                     return AuthResult::InternalError("internal error".to_string());
                 }
             };
@@ -182,7 +194,10 @@ impl Authenticator for DatabaseAuthenticator {
                 self.record_failure(dn, "invalid_credentials").await;
                 let event =
                     AuditEvent::bind_attempt(self.peer_addr, dn, BindOutcome::InvalidCredentials);
-                self.audit.log(event).await;
+                if let Err(e) = self.audit.log_checked(event).await {
+                    tracing::error!(error = %e, "NIST AU-5: audit persistence failed");
+                    return AuthResult::InternalError("audit subsystem unavailable".into());
+                }
                 return AuthResult::InvalidCredentials;
             }
 
@@ -192,7 +207,10 @@ impl Authenticator for DatabaseAuthenticator {
                 self.record_failure(dn, "invalid_credentials").await;
                 let event =
                     AuditEvent::bind_attempt(self.peer_addr, dn, BindOutcome::InvalidCredentials);
-                self.audit.log(event).await;
+                if let Err(e) = self.audit.log_checked(event).await {
+                    tracing::error!(error = %e, "NIST AU-5: audit persistence failed");
+                    return AuthResult::InternalError("audit subsystem unavailable".into());
+                }
                 return AuthResult::InvalidCredentials;
             }
 
@@ -211,7 +229,10 @@ impl Authenticator for DatabaseAuthenticator {
                             detail: "transaction error".into(),
                         },
                     );
-                    self.audit.log(event).await;
+                    if let Err(e) = self.audit.log_checked(event).await {
+                        tracing::error!(error = %e, "NIST AU-5: audit persistence failed");
+                        return AuthResult::InternalError("audit subsystem unavailable".into());
+                    }
                     return AuthResult::InternalError("transaction error".into());
                 }
             };
@@ -244,7 +265,10 @@ impl Authenticator for DatabaseAuthenticator {
                         dn,
                         BindOutcome::InvalidCredentials,
                     );
-                    self.audit.log(event).await;
+                    if let Err(e) = self.audit.log_checked(event).await {
+                        tracing::error!(error = %e, "NIST AU-5: audit persistence failed");
+                        return AuthResult::InternalError("audit subsystem unavailable".into());
+                    }
                     return AuthResult::InvalidCredentials;
                 }
                 Err(e) => {
@@ -257,7 +281,10 @@ impl Authenticator for DatabaseAuthenticator {
                             detail: "credential lookup error".into(),
                         },
                     );
-                    self.audit.log(event).await;
+                    if let Err(e) = self.audit.log_checked(event).await {
+                        tracing::error!(error = %e, "NIST AU-5: audit persistence failed");
+                        return AuthResult::InternalError("audit subsystem unavailable".into());
+                    }
                     return AuthResult::InternalError("credential lookup error".into());
                 }
             };
@@ -278,7 +305,10 @@ impl Authenticator for DatabaseAuthenticator {
                                 detail: "verification error".into(),
                             },
                         );
-                        self.audit.log(event).await;
+                        if let Err(e) = self.audit.log_checked(event).await {
+                            tracing::error!(error = %e, "NIST AU-5: audit persistence failed");
+                            return AuthResult::InternalError("audit subsystem unavailable".into());
+                        }
                         return AuthResult::InternalError("verification error".into());
                     }
                 };
@@ -322,7 +352,10 @@ impl Authenticator for DatabaseAuthenticator {
                         detail: "failed to mark password used".into(),
                     },
                 );
-                self.audit.log(event).await;
+                if let Err(e) = self.audit.log_checked(event).await {
+                    tracing::error!(error = %e, "NIST AU-5: audit persistence failed");
+                    return AuthResult::InternalError("audit subsystem unavailable".into());
+                }
                 return AuthResult::InternalError("failed to mark password used".into());
             }
 
@@ -336,7 +369,10 @@ impl Authenticator for DatabaseAuthenticator {
                         detail: "commit error".into(),
                     },
                 );
-                self.audit.log(event).await;
+                if let Err(e) = self.audit.log_checked(event).await {
+                    tracing::error!(error = %e, "NIST AU-5: audit persistence failed");
+                    return AuthResult::InternalError("audit subsystem unavailable".into());
+                }
                 return AuthResult::InternalError("commit error".into());
             }
 
@@ -461,6 +497,12 @@ impl SearchBackend for DatabaseSearchBackend {
                 .await
                 .is_err()
             {
+                // NIST AU-2: Audit rate-limit trigger for search operations.
+                tracing::warn!(
+                    source_ip = %source_ip,
+                    bound_dn = %bound_dn,
+                    "NIST AC-7: search rate limit exceeded"
+                );
                 return SearchOutcome {
                     entries: Vec::new(),
                     result_code: ResultCode::Busy,
@@ -848,7 +890,11 @@ impl ConfigBrokerAuthorizer {
 
 impl BrokerAuthorizer for ConfigBrokerAuthorizer {
     fn is_authorized_broker(&self, dn: &str) -> bool {
-        self.authorized_dns.iter().any(|d| d == dn)
+        // NIST AC-3: Case-insensitive DN comparison per RFC 4512.
+        let dn_lower = dn.to_ascii_lowercase();
+        self.authorized_dns
+            .iter()
+            .any(|d| d.to_ascii_lowercase() == dn_lower)
     }
 }
 

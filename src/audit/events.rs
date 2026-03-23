@@ -161,7 +161,6 @@ impl AuditEvent {
     }
 
     /// Create a SearchRequest event with the current timestamp.
-    #[allow(dead_code)]
     pub fn search_request(
         source: SocketAddr,
         bound_dn: &str,
@@ -176,6 +175,24 @@ impl AuditEvent {
             base_dn: base_dn.to_string(),
             scope: scope.to_string(),
             filter_summary: filter_summary.to_string(),
+        }
+    }
+
+    /// Create a SearchComplete event with the current timestamp.
+    pub fn search_complete(
+        source: SocketAddr,
+        bound_dn: &str,
+        base_dn: &str,
+        entries_returned: usize,
+        result_code: i64,
+    ) -> Self {
+        Self::SearchComplete {
+            timestamp: Utc::now(),
+            source_addr: source.to_string(),
+            bound_dn: bound_dn.to_string(),
+            base_dn: base_dn.to_string(),
+            entries_returned,
+            result_code,
         }
     }
 

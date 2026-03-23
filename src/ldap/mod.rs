@@ -133,7 +133,31 @@ where
                 Vec::new()
             }
             ProtocolOp::SearchRequest(req) => {
+                // NIST AU-2: Audit search operations for access tracking.
+                let bound_dn = session.bind_info().map_or("", |i| i.dn.as_str());
+                let scope_str = format!("{:?}", req.scope);
+                self.audit
+                    .log(AuditEvent::search_request(
+                        session.peer_addr(),
+                        bound_dn,
+                        &req.base_object,
+                        &scope_str,
+                        &format!("{:?}", req.filter),
+                    ))
+                    .await;
+
                 let (entries, result) = self.search_handler.handle_search(&req, session).await;
+
+                // Audit search completion with result count.
+                self.audit
+                    .log(AuditEvent::search_complete(
+                        session.peer_addr(),
+                        bound_dn,
+                        &req.base_object,
+                        entries.len(),
+                        result.result_code as i64,
+                    ))
+                    .await;
 
                 let mut responses: Vec<LdapMessage> = entries
                     .into_iter()

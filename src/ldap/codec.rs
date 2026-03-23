@@ -834,6 +834,11 @@ pub fn decode_filter(tag: u8, value: &[u8], depth: usize) -> Result<Filter> {
         }
         TAG_CTX_7 => {
             // present — AttributeDescription (OCTET STRING value)
+            if value.contains(&0) {
+                return Err(CodecError::InvalidFormat(
+                    "embedded NULL byte in present filter attribute".into(),
+                ));
+            }
             let attr = String::from_utf8(value.to_vec()).map_err(|_| CodecError::InvalidUtf8)?;
             Ok(Filter::Present(attr))
         }
@@ -960,6 +965,11 @@ fn decode_extended_request(value: &[u8]) -> Result<ExtendedRequest> {
         return Err(CodecError::InvalidFormat(format!(
             "ExtendedRequest requestName expected tag 0x80, got 0x{name_tag:02x}"
         )));
+    }
+    if name_val.contains(&0) {
+        return Err(CodecError::InvalidFormat(
+            "embedded NULL byte in ExtendedRequest OID".into(),
+        ));
     }
     let request_name = String::from_utf8(name_val.to_vec()).map_err(|_| CodecError::InvalidUtf8)?;
 

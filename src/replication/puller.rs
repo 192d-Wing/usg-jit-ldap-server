@@ -691,14 +691,15 @@ impl ReplicationPuller {
                 ReplicationChange::UserUpsert(user) => {
                     sqlx::query(
                         "INSERT INTO identity.users \
-                            (id, username, dn, display_name, email, enabled, updated_at) \
-                         VALUES ($1, $2, $3, $4, $5, $6, $7) \
+                            (id, username, dn, display_name, email, enabled, require_client_cert, updated_at) \
+                         VALUES ($1, $2, $3, $4, $5, $6, $7, $8) \
                          ON CONFLICT (id) DO UPDATE SET \
                             username = EXCLUDED.username, \
                             dn = EXCLUDED.dn, \
                             display_name = EXCLUDED.display_name, \
                             email = EXCLUDED.email, \
                             enabled = EXCLUDED.enabled, \
+                            require_client_cert = EXCLUDED.require_client_cert, \
                             updated_at = EXCLUDED.updated_at",
                     )
                     .bind(user.user_id)
@@ -707,6 +708,7 @@ impl ReplicationPuller {
                     .bind(&user.display_name)
                     .bind(&user.email)
                     .bind(user.enabled)
+                    .bind(user.require_client_cert)
                     .bind(user.updated_at)
                     .execute(&mut **tx)
                     .await?;

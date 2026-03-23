@@ -396,16 +396,28 @@ pub fn resolve_config_path() -> String {
 /// or systemd environments where an attacker might control CLI arguments.
 pub fn load(path: &str) -> Result<ServerConfig, ConfigError> {
     // NIST CM-6: Require absolute path to prevent CWD-poisoning attacks.
-    // No exceptions for relative paths — even "config.toml" must be absolute
-    // in production to prevent loading attacker-controlled files from CWD.
     if !std::path::Path::new(path).is_absolute() {
         return Err(ConfigError::Validation(format!(
             "configuration path '{}' must be absolute (e.g. /etc/ldap-server/config.toml)",
             path
         )));
     }
-    // Read the file.
-    let contents = std::fs::read_to_string(path).map_err(|e| ConfigError::ReadFile {
+    // Resolve symlinks to prevent symlink-based config substitution.
+    // This ensures the real file path is logged and auditable.
+    let canonical = std::fs::canonicalize(path).map_err(|e| ConfigError::ReadFile {
+        path: path.to_string(),
+        source: e,
+    })?;
+    let canonical_str = canonical.to_string_lossy();
+    if canonical_str != path {
+        tracing::warn!(
+            original = %path,
+            resolved = %canonical_str,
+            "config path resolved through symlink — using canonical path"
+        );
+    }
+    // Read the file using the canonical (symlink-resolved) path.
+    let contents = std::fs::read_to_string(&canonical).map_err(|e| ConfigError::ReadFile {
         path: path.to_string(),
         source: e,
     })?;
