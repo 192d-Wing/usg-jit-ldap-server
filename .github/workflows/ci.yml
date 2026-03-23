@@ -51,8 +51,11 @@ jobs:
   # Integration tests (requires PostgreSQL)
   # ---------------------------------------------------------------
   test-integration:
-    name: Integration Tests
-    runs-on: ubuntu-latest
+    name: Integration Tests (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
     services:
       postgres:
         image: postgres:16-alpine
@@ -80,8 +83,11 @@ jobs:
   # End-to-end tests (full containerized stack with ldapsearch)
   # ---------------------------------------------------------------
   test-e2e:
-    name: E2E Tests
-    runs-on: ubuntu-latest
+    name: E2E Tests (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
     steps:
       - uses: actions/checkout@v6
       - name: Generate test TLS certificates (CA + server + client)
