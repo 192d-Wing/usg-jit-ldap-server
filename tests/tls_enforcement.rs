@@ -48,7 +48,7 @@ fn test_tls_acceptor_builds_with_valid_certs() {
     let (cert_file, key_file, ca_file) = write_test_certs();
 
     let settings = usg_jit_ldap_server::config::TlsSettings {
-        require_client_cert: true,
+
         cert_path: cert_file.path().to_str().unwrap().to_string(),
         key_path: key_file.path().to_str().unwrap().to_string(),
         ca_cert_path: ca_file.path().to_str().unwrap().to_string(),
@@ -66,7 +66,7 @@ fn test_tls_acceptor_builds_with_valid_certs() {
 #[test]
 fn test_tls_acceptor_fails_without_cert_file() {
     let settings = usg_jit_ldap_server::config::TlsSettings {
-        require_client_cert: true,
+
         cert_path: "/nonexistent/cert.pem".to_string(),
         key_path: "/nonexistent/key.pem".to_string(),
         ca_cert_path: "/nonexistent/ca.pem".to_string(),
@@ -85,7 +85,7 @@ fn test_tls_12_rejected() {
     let (cert_file, key_file, ca_file) = write_test_certs();
 
     let settings = usg_jit_ldap_server::config::TlsSettings {
-        require_client_cert: true,
+
         cert_path: cert_file.path().to_str().unwrap().to_string(),
         key_path: key_file.path().to_str().unwrap().to_string(),
         ca_cert_path: ca_file.path().to_str().unwrap().to_string(),
@@ -104,7 +104,7 @@ fn test_tls_10_rejected() {
     let (cert_file, key_file, ca_file) = write_test_certs();
 
     let settings = usg_jit_ldap_server::config::TlsSettings {
-        require_client_cert: true,
+
         cert_path: cert_file.path().to_str().unwrap().to_string(),
         key_path: key_file.path().to_str().unwrap().to_string(),
         ca_cert_path: ca_file.path().to_str().unwrap().to_string(),

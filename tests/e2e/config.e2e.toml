@@ -9,7 +9,6 @@ idle_timeout_secs = 300
 cert_path = "/etc/ldap-server/certs/server.crt"
 key_path = "/etc/ldap-server/certs/server.key"
 ca_cert_path = "/etc/ldap-server/certs/ca.crt"
-require_client_cert = false
 min_version = "1.3"
 
 [database]

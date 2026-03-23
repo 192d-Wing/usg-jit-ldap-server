@@ -134,13 +134,7 @@ pub fn build_tls_acceptor(config: &TlsSettings) -> Result<TlsAcceptor, TlsError>
 
     // Step 4: Build rustls ServerConfig with client auth.
     // NIST SC-13: Only strong ciphersuites and TLS 1.3 are permitted.
-    let tls_config = build_server_config(
-        certs,
-        key,
-        &config.min_version,
-        ca_certs,
-        config.require_client_cert,
-    )?;
+    let tls_config = build_server_config(certs, key, &config.min_version, ca_certs)?;
 
     tracing::info!(
         min_tls_version = %config.min_version,
@@ -186,7 +180,6 @@ fn build_server_config(
     key: PrivateKeyDer<'static>,
     min_version: &str,
     ca_certs: Vec<CertificateDer<'static>>,
-    require_client_cert: bool,
 ) -> Result<ServerConfig, TlsError> {
     // Only TLS 1.3 is supported. TLS 1.2 is explicitly excluded.
     // NIST SC-13: Strongest available cryptographic protection.
@@ -209,16 +202,11 @@ fn build_server_config(
             TlsError::ClientVerifierBuild(format!("failed to add CA cert to root store: {e}"))
         })?;
     }
-    let verifier_builder = WebPkiClientVerifier::builder(Arc::new(root_store));
-    let client_verifier = if require_client_cert {
-        // NIST IA-3: All clients must present a valid certificate.
-        verifier_builder.build()
-    } else {
-        // Client certs are optional — verified when presented, but
-        // password-only auth via LDAP Bind is also accepted.
-        verifier_builder.allow_unauthenticated().build()
-    }
-    .map_err(|e| TlsError::ClientVerifierBuild(e.to_string()))?;
+    // NIST IA-3: All clients must present a valid certificate.
+    // mTLS is mandatory — there is no option to disable it.
+    let client_verifier = WebPkiClientVerifier::builder(Arc::new(root_store))
+        .build()
+        .map_err(|e| TlsError::ClientVerifierBuild(e.to_string()))?;
 
     let config = ServerConfig::builder_with_protocol_versions(&[&rustls::version::TLS13])
         .with_client_cert_verifier(client_verifier)
@@ -368,7 +356,7 @@ mod tests {
 
     #[test]
     fn test_unsupported_tls_version() {
-        let result = build_server_config(vec![], PrivateKeyDer::Pkcs8(vec![].into()), "1.0", vec![], true);
+        let result = build_server_config(vec![], PrivateKeyDer::Pkcs8(vec![].into()), "1.0", vec![]);
         assert!(result.is_err());
     }
 }

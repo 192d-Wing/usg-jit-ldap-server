@@ -117,26 +117,13 @@ pub struct TlsSettings {
     pub key_path: String,
 
     /// Path to PEM-encoded CA certificate(s) for verifying client certificates.
-    /// When present, client certificates signed by this CA are accepted.
-    /// NIST IA-3: Device identification and authentication.
+    /// NIST IA-3: Mutual TLS is mandatory — all clients must present a valid
+    /// certificate signed by this CA. There is no option to disable mTLS.
     pub ca_cert_path: String,
-
-    /// Whether client certificates are required for all connections.
-    /// - `true` (default): mTLS is mandatory — connections without a valid
-    ///   client certificate are rejected at the TLS layer.
-    /// - `false`: client certificates are optional — clients without certs
-    ///   can still authenticate via LDAP Simple Bind with password. Certs
-    ///   are still verified when presented.
-    #[serde(default = "default_require_client_cert")]
-    pub require_client_cert: bool,
 
     /// Minimum TLS version. Default: "1.3". Only "1.3" is accepted.
     #[serde(default = "default_min_tls_version")]
     pub min_version: String,
-}
-
-fn default_require_client_cert() -> bool {
-    true
 }
 
 fn default_min_tls_version() -> String {
