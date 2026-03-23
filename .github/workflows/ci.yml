@@ -35,8 +35,11 @@ jobs:
   # Unit tests (no database required)
   # ---------------------------------------------------------------
   test-unit:
-    name: Unit Tests
-    runs-on: ubuntu-latest
+    name: Unit Tests (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        runner: [ubuntu-latest, ubuntu-24.04-arm]
     steps:
       - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
