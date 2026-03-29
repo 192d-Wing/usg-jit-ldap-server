@@ -60,7 +60,7 @@ chrono = { version = "0.4", features = ["serde"] }
 x509-parser = "0.18"
 
 # SHA-256 for replication payload integrity
-sha2 = "0.10"
+sha2 = "0.11"
 
 [dev-dependencies]
 proptest = "1"
